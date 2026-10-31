@@ -1,0 +1,41 @@
+# Local-checkout package: run makepkg -si from packaging/arch.
+# No source download is needed. See README.md.
+pkgname=feather-plasma
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Native Plasma 6 AirDrop radio controls powered by Owly (developer preview)'
+arch=('x86_64' 'aarch64')
+license=('MIT')
+depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-declarative' 'kconfig'
+         'libplasma' 'plasma-workspace' 'kirigami' 'systemsettings' 'plasma-nm' 'owly')
+makedepends=('cmake' 'ninja')
+checkdepends=('dbus')
+source=()
+sha256sums=()
+
+prepare() {
+  # Snapshot only the inputs, keeping build products and makepkg output out.
+  rm -rf "$srcdir/feather-plasma"
+  mkdir -p "$srcdir/feather-plasma"
+  cp -a "$startdir/../.."/{CMakeLists.txt,LICENSE,src,applet,data,tests} \
+    "$srcdir/feather-plasma/"
+}
+
+build() {
+  cmake -S "$srcdir/feather-plasma" -B "$srcdir/build" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DFEATHER_QML_INSTALL_DIR=/usr/lib/qt6/qml \
+    -DBUILD_TESTING=ON
+  cmake --build "$srcdir/build"
+}
+
+check() {
+  ctest --test-dir "$srcdir/build" --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install "$srcdir/build"
+  install -Dm644 "$startdir/../../LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

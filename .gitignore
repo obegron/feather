@@ -1,0 +1,12 @@
+/build/
+/packaging/arch/src/
+/packaging/arch/pkg/
+/packaging/arch/*.pkg.tar.*
+
+# Local agent configuration and credentials
+/.agents/
+/.aws/
+/.codex/
+.env
+.env.*
+!.env.example
