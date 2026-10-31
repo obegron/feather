@@ -665,16 +665,11 @@ void TransferManager::beginSharing(const QStringList &paths,
   m_pendingPaths = paths;
   m_preselectedPeer = peer;
   m_sharePending = true;
-  const auto initial = m_radio->Snapshot();
-  m_shareRenewRequested = initial.value("owned").toBool() &&
-                          initial.value("deadline").toLongLong() > 0 &&
-                          !initial.value("busy").toBool();
   if (!m_radio->startSharing()) {
     m_sharePending = false;
     m_pendingPaths.clear();
     notify(tr("Couldn’t start sharing"),
-           tr("Feather is busy or cannot switch this session to unlimited "
-              "mode. Turn it off and try again."));
+           tr("The radio is busy or unavailable. Please try again."));
     return;
   }
   advanceSharing();
@@ -690,29 +685,7 @@ void TransferManager::advanceSharing() {
     notify(tr("Couldn’t start sharing"), snapshot.value("detail").toString());
     return;
   }
-  if (snapshot.value("owned").toBool() &&
-      snapshot.value("state").toString() == "on" &&
-      snapshot.value("deadline").toLongLong() > 0 &&
-      !snapshot.value("busy").toBool()) {
-    if (m_shareRenewRequested) {
-      m_sharePending = false;
-      m_pendingPaths.clear();
-      notify(tr("Couldn’t start sharing"),
-             tr("Could not switch to unlimited mode. Turn Feather off and try "
-                "sharing again."));
-      return;
-    }
-    m_shareRenewRequested = true;
-    if (!m_radio->startSharing()) {
-      m_sharePending = false;
-      m_pendingPaths.clear();
-      notify(tr("Couldn’t start sharing"),
-             tr("Turn Feather off, then try sharing again."));
-    }
-    return;
-  }
-  if (!accepting() || snapshot.value("deadline").toLongLong() != 0 ||
-      snapshot.value("busy").toBool())
+  if (!accepting() || snapshot.value("busy").toBool())
     return;
   m_sharePending = false;
   const auto paths = m_pendingPaths;

@@ -38,7 +38,9 @@ TCP 8771 on the same AWDL interface. Feather does not observe external CLI trans
 Choose 5 or 10 minutes, or **∞** (Until off). While timed radio is active, add
 5 or 10 minutes without restarting the link, or switch to **∞**. The tray ring
 shrinks with the timer; hover shows the remaining time. Unlimited sessions have a
-steady ring. A missing renewal acknowledgement marks the timer unknown rather
+steady ring. Sharing from Dolphin, the tray or the clipboard reuses an active
+session and preserves its countdown. Sharing with the radio off starts an unlimited
+session after any required warning. A missing renewal acknowledgement marks the timer unknown rather
 than inventing a deadline.
 
 The off switch is disabled during incoming approval and active transfers. The

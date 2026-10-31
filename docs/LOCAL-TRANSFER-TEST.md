@@ -49,9 +49,12 @@ will not appear in the applet or receive Feather's lifetime protection.
   may be acquired and the warning preference must remain unchanged. Confirm the
   next attempt; it must acquire an unlimited lease without changing the ordinary
   five/ten-minute timeout preference.
-- Drop during a timed session: upgrade the existing lease to unlimited using Renew,
-  without restarting the link. An older daemon must report the missing capability
-  rather than silently ignoring the files.
+- Start a five-minute session, then share through Dolphin, drop onto the tray or
+  paste files. The recipient picker must open using the same lease and helper,
+  without renewing the lease or changing the discovery countdown to unlimited.
+  Send a file: transfer protection may renew the lease with a finite grace period,
+  but the discovery countdown must stay unchanged. Repeat Receive files during a
+  timed session; it must also preserve the countdown.
 - Select a recipient, tick Remember this device and send. On a later share the
   rediscovered device should be selected, but Send must still be required. Untick
   the option or use Forget saved device to remove the preference. An absent device

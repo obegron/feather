@@ -115,6 +115,12 @@ private slots:
     QCOMPARE(fake.duration, 600u);
     QTRY_VERIFY(radio.Snapshot()["canRenew"].toBool());
     const auto originalDeadline = radio.Snapshot()["deadline"].toLongLong();
+    QSignalSpy shareWarningActive(&radio, &RadioService::ShareWarningRequired);
+    QVERIFY(radio.startSharing());
+    QCOMPARE(radio.Snapshot()["deadline"].toLongLong(), originalDeadline);
+    QCOMPARE(fake.renewals, 0);
+    QCOMPARE(fake.acquisitions, 1);
+    QCOMPARE(shareWarningActive.count(), 0);
     // Go through the same D-Bus bridge as the UI.
     bridge.addTime(300);
     QTRY_COMPARE(fake.renewals, 1);

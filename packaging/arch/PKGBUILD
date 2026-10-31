@@ -2,7 +2,7 @@
 # No source download is needed. See README.md.
 pkgname=feather-plasma
 pkgver=0.3.0
-pkgrel=5
+pkgrel=6
 pkgdesc='Native Plasma 6 AirDrop file sharing powered by Owly (preview)'
 arch=('x86_64' 'aarch64')
 license=('MIT')
