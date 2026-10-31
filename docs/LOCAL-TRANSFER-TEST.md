@@ -21,7 +21,7 @@ claimed by automated tests.
    A transfer already committing files can complete normally after Cancel.
 5. Open Send files, choose local files and a discovered device, accept on the
    phone. Check native progress and successful delivery. Repeat through Dolphin's
-   Send with Feather context-menu action. Reject on the phone and inspect failure.
+   Share → Send with Feather action. Verify there is no duplicate Actions entry. Reject on the phone and inspect failure.
 6. While a transfer is active, verify the off switch is disabled and the D-Bus
    Disable method cannot stop it. Add time at the same time as a heartbeat; the
    transfer must continue. Let discovery expire during a long transfer: stop
@@ -41,14 +41,20 @@ will not appear in the applet or receive Feather's lifetime protection.
 ## Compact sharing flow
 
 - Right-click Feather for Send files and Receive files. Drop a local file onto
-  the tray icon or open popup; the drag must use Copy, never remove the original.
+  the tray icon; the drag must use Copy, never remove the original.
+  For the popup, copy files in Dolphin, open Feather and use Paste files or Ctrl+V.
+  Clipboard content and original files must remain unchanged; text, folders and
+  remote URLs must not start a share.
 - With radio off and the Wi-Fi warning enabled, cancel the warning once: no lease
   may be acquired and the warning preference must remain unchanged. Confirm the
   next attempt; it must acquire an unlimited lease without changing the ordinary
   five/ten-minute timeout preference.
-- Drop during a timed session: upgrade the existing lease to unlimited using Renew,
-  without restarting the link. An older daemon must report the missing capability
-  rather than silently ignoring the files.
+- Start a five-minute session, then share through Dolphin, drop onto the tray or
+  paste files. The recipient picker must open using the same lease and helper,
+  without renewing the lease or changing the discovery countdown to unlimited.
+  Send a file: transfer protection may renew the lease with a finite grace period,
+  but the discovery countdown must stay unchanged. Repeat Receive files during a
+  timed session; it must also preserve the countdown.
 - Select a recipient, tick Remember this device and send. On a later share the
   rediscovered device should be selected, but Send must still be required. Untick
   the option or use Forget saved device to remove the preference. An absent device

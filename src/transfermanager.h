@@ -69,6 +69,6 @@ private:
   QString m_error, m_destination;
   QStringList m_pendingPaths;
   QString m_preselectedPeer;
-  bool m_sharePending = false, m_shareRenewRequested = false;
+  bool m_sharePending = false;
   QPointer<QObject> m_shareWarning, m_peerPicker;
 };

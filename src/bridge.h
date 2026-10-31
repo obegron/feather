@@ -17,6 +17,7 @@ public:
   Q_INVOKABLE void resetWarning();
   Q_INVOKABLE void refresh();
   Q_INVOKABLE void pickFiles();
+  Q_INVOKABLE bool pasteFiles();
   Q_INVOKABLE void receiveFiles();
   Q_INVOKABLE void sendFiles(const QStringList &urls);
   Q_INVOKABLE void forgetRecipient();

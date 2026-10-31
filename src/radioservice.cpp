@@ -448,18 +448,13 @@ void RadioService::restoreTimer() {
 }
 
 bool RadioService::startSharing(bool confirmed, bool suppressWarning) {
+  // Sharing reuses our current lease and discovery deadline. Only starting
+  // from off acquires an unlimited session; transfers protect their own
+  // lifetime.
+  if (m_lease)
+    return m_state == "on" && !m_timerUncertain;
   if (m_pending)
     return m_state == "starting";
-  if (m_lease) {
-    if (m_state != "on" || m_timerUncertain)
-      return false;
-    if (!m_deadline)
-      return true;
-    if (!m_renewSupported)
-      return false;
-    AddTime(0);
-    return true;
-  }
   if (m_transferCount || (m_state != "off" && m_state != "error"))
     return false;
   if (m_warning && !confirmed) {

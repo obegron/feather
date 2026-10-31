@@ -28,7 +28,7 @@ without executing tests in a restricted container, use `makepkg --nocheck -si`.
 This skips runtime validation and does not establish hardware compatibility.
 
 The package installs the session executable, D-Bus activation entry, native QML
-module, Rust transfer helper, notifications, Dolphin service menu and tray applet together under `/usr`. After installation, enable Feather
+module, Rust transfer helper, notifications, Dolphin Purpose sharing plugin and tray applet together under `/usr`. After installation, enable Feather
 in System Tray settings, or add it through Plasma's widget chooser. If the
 current Plasma process does not discover the new module, log out and back in.
 Owly's system service must be running (see `systemctl status owlyd`); start it
@@ -57,3 +57,7 @@ Version 0.3.0-3 changes the applet and application ID to
 one after upgrading. Finish transfers and stop the old session service with the
 radio off first. Pacman removes the old package-owned metadata and module paths;
 `featherrc` preferences are retained.
+
+Version 0.3.0-5 replaces the Actions entry with Share → Send with Feather.
+The package adds the `purpose` dependency and installs a native Purpose plugin;
+pacman removes the previous package-owned service-menu file on upgrade.

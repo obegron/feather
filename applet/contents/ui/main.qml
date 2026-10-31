@@ -12,6 +12,7 @@ PlasmoidItem {
     property bool confirmationPending: false
     property bool suppressWarning: false
     property bool settingsOpen: false
+    property string pasteNotice: ""
     property double now: Date.now() / 1000
     readonly property bool timerUnknown: radio.timerKnown === false
     readonly property bool timed: !!radio.owned && Number(radio.deadline) > 0 && !timerUnknown
@@ -31,6 +32,9 @@ PlasmoidItem {
     Plasmoid.status: radio.owned || radio.busy ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus
     toolTipMainText: i18n("Feather — AirDrop radio")
     toolTipSubText: (Number(radio.transferCount) > 0 ? i18n("%1 active transfers", radio.transferCount) + " · " : "") + stateText + (radio.state === "on" ? " · " + remaining : "")
+    function pasteCopiedFiles() {
+        root.pasteNotice = bridge.pasteFiles() ? "" : i18n("Copy local files in Dolphin first.")
+    }
     function shareDrop(drop) {
         if (!drop.hasUrls || drop.urls.length === 0) { drop.accepted = false; return }
         const urls = []
@@ -125,7 +129,7 @@ PlasmoidItem {
         }
     }
     onExpandedChanged: {
-        if (root.expanded) { root.now = Date.now() / 1000; bridge.refresh() }
+        if (root.expanded) { root.pasteNotice = ""; root.now = Date.now() / 1000; bridge.refresh() }
         else { root.confirmationPending = false; root.suppressWarning = false }
     }
     Bridge {
@@ -153,6 +157,11 @@ PlasmoidItem {
         Layout.preferredHeight: Kirigami.Units.gridUnit * 11
         contentWidth: availableWidth
         clip: true
+        Shortcut {
+            sequences: [StandardKey.Paste]
+            enabled: root.expanded && !root.settingsOpen && !root.confirmationPending
+            onActivated: root.pasteCopiedFiles()
+        }
         QQC2.Menu {
             id: panelMenu
             QQC2.MenuItem { text: i18n("Send files…"); icon.name: "document-send"; onTriggered: bridge.pickFiles() }
@@ -172,12 +181,6 @@ PlasmoidItem {
             QQC2.Pane {
                 Layout.fillWidth: true
                 padding: Kirigami.Units.largeSpacing
-                DropArea {
-                    parent: panel
-                    anchors.fill: parent
-                    onEntered: function(drag) { drag.accepted = drag.hasUrls }
-                    onDropped: function(drop) { root.shareDrop(drop) }
-                }
                 contentItem: ColumnLayout {
                     spacing: Kirigami.Units.largeSpacing
                     RowLayout {
@@ -326,10 +329,18 @@ PlasmoidItem {
                             onClicked: { root.settingsOpen = true; details.checked = true }
                         }
                     }
-                    QQC2.Label {
+                    QQC2.Button {
                         visible: !root.settingsOpen && !root.confirmationPending
-                        text: i18n("Drop files here to share")
-                        opacity: 0.6; font: Kirigami.Theme.smallFont
+                        text: i18n("Paste files")
+                        icon.name: "edit-paste"
+                        Layout.fillWidth: true
+                        onClicked: root.pasteCopiedFiles()
+                    }
+                    QQC2.Label {
+                        visible: root.pasteNotice.length > 0 && !root.settingsOpen && !root.confirmationPending
+                        text: root.pasteNotice
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
                     }
                 }
             }

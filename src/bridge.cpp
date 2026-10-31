@@ -1,11 +1,16 @@
 #include "bridge.h"
+#include <QClipboard>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
+#include <QFileInfo>
+#include <QGuiApplication>
+#include <QMimeData>
 #include <QProcess>
 #include <QTimer>
+#include <QUrl>
 static const QString service = QStringLiteral("io.github.obegron.feather");
 static const QString path = QStringLiteral("/io/github/obegron/feather");
 static const QString iface = QStringLiteral("io.github.obegron.feather.Radio1");
@@ -92,3 +97,20 @@ void Bridge::browse() { invoke("Browse"); }
 void Bridge::receiveFiles() { invoke("ReceiveFiles"); }
 void Bridge::sendFiles(const QStringList &urls) { invoke("SendFiles", {urls}); }
 void Bridge::forgetRecipient() { invoke("ForgetRecipient"); }
+
+bool Bridge::pasteFiles() {
+  // Read from the focused applet, not the background session service: on
+  // Wayland clipboard access belongs to the client with keyboard focus.
+  const auto *data =
+      QGuiApplication::clipboard()->mimeData(QClipboard::Clipboard);
+  if (!data || !data->hasUrls() || data->urls().isEmpty())
+    return false;
+  QStringList urls;
+  for (const auto &url : data->urls()) {
+    if (!url.isLocalFile() || !QFileInfo(url.toLocalFile()).isFile())
+      return false;
+    urls << url.toString();
+  }
+  sendFiles(urls);
+  return true;
+}

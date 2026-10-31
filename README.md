@@ -2,7 +2,7 @@
 
 A native Plasma 6 tray applet powered by Owly. Enable the radio to receive files,
 right-click the icon or popup for Send/Receive shortcuts, or drop files onto the tray icon.
-Dolphin also provides **Send with Feather**.
+Dolphin provides **Share → Send with Feather…** through KDE Purpose.
 Incoming offers ask for native Accept/Decline consent. Both directions appear in
 Plasma's transfer job UI, where they can be cancelled. Files are saved to Downloads.
 
@@ -38,7 +38,9 @@ TCP 8771 on the same AWDL interface. Feather does not observe external CLI trans
 Choose 5 or 10 minutes, or **∞** (Until off). While timed radio is active, add
 5 or 10 minutes without restarting the link, or switch to **∞**. The tray ring
 shrinks with the timer; hover shows the remaining time. Unlimited sessions have a
-steady ring. A missing renewal acknowledgement marks the timer unknown rather
+steady ring. Sharing from Dolphin, the tray or the clipboard reuses an active
+session and preserves its countdown. Sharing with the radio off starts an unlimited
+session after any required warning. A missing renewal acknowledgement marks the timer unknown rather
 than inventing a deadline.
 
 The off switch is disabled during incoming approval and active transfers. The
@@ -81,7 +83,7 @@ rendering, actual firewall setup and AX200/KWallet reconnection remain to be che
 on a real host. See [local transfer acceptance](docs/LOCAL-TRANSFER-TEST.md).
 
 The three desktop components are the Plasma applet, the Qt session service with
-its private Rust transfer subprocess, and Dolphin's service menu. The adapter uses
+its private Rust transfer subprocess, and Dolphin's Purpose sharing plugin. The adapter uses
 Owly's public APIs and locally patched lifecycle callbacks rather than parsing CLI
 output. See [adapter provenance, IPC and upstream patches](adapter/README.md).
 No upstream PR will be created until local functionality is validated.
@@ -92,6 +94,11 @@ Feather's original code is [MIT licensed](LICENSE). Vendored Owly code and BLE g
 retain their MIT notices; compiled Rust dependency notices are bundled in
 `adapter/THIRD_PARTY_LICENSES`. Qt/KDE dependencies retain their own licenses.
 
+
+Copy files in Dolphin, open Feather and choose **Paste files** to share from the
+clipboard. The popup closes on focus changes, so it uses paste instead of a drop
+target; dropping onto the tray icon remains available. Plain text, remote URLs and
+folders are not accepted from the clipboard. The clipboard is left unchanged.
 
 Dropping files or using a sharing shortcut enables the radio until turned off,
 with Wi-Fi confirmation when required. It then searches for recipients and opens
@@ -109,3 +116,8 @@ KDE application. On upgrading from the former `org.kde.feather` applet, finish
 transfers, turn the radio off, remove the old tray widget, close Feather and stop
 the old session service (`pkill -x feather-session`). After upgrading, add Feather
 again from System Tray settings. KConfig preferences remain in `featherrc`.
+
+The Purpose plugin hands selected local files to Feather's existing recipient
+picker; actual transfer progress remains in the session service's native KJobs.
+The former Actions service-menu entry is removed on package upgrade. Reopen
+Dolphin if its Share menu does not refresh immediately.
