@@ -4,7 +4,7 @@ import QtQuick.Controls as QQC2
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
-import org.kde.feather
+import io.github.obegron.feather
 
 PlasmoidItem {
     id: root

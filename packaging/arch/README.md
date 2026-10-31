@@ -50,3 +50,10 @@ Timed transfers require the locally patched Owly daemon with `Radio1.Renew`;
 Until off supports transfer operation with an older daemon. Stop any separate
 `owly receive` process before enabling Feather. The package check phase also runs
 Rust protocol/library tests and a fake-helper Qt transfer pipeline test.
+
+
+Version 0.3.0-3 changes the applet and application ID to
+`io.github.obegron.feather`. Remove the old Feather tray widget and add the new
+one after upgrading. Finish transfers and stop the old session service with the
+radio off first. Pacman removes the old package-owned metadata and module paths;
+`featherrc` preferences are retained.

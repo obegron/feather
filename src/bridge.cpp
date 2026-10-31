@@ -6,9 +6,9 @@
 #include <QDBusServiceWatcher>
 #include <QProcess>
 #include <QTimer>
-static const QString service = QStringLiteral("org.kde.Feather");
-static const QString path = QStringLiteral("/org/kde/Feather");
-static const QString iface = QStringLiteral("org.kde.Feather.Radio1");
+static const QString service = QStringLiteral("io.github.obegron.feather");
+static const QString path = QStringLiteral("/io/github/obegron/feather");
+static const QString iface = QStringLiteral("io.github.obegron.feather.Radio1");
 Bridge::Bridge(QObject *parent) : QObject(parent) {
   auto bus = QDBusConnection::sessionBus();
   bus.connect(service, path, iface, "Changed", this, SLOT(update(QVariantMap)));

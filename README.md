@@ -25,7 +25,7 @@ See [Arch instructions](packaging/arch/README.md). Add Feather through System Tr
 settings. No radio is enabled automatically at login. To open it separately:
 
 ```sh
-plasmawindowed org.kde.feather
+plasmawindowed io.github.obegron.feather
 ```
 
 Before upgrading, finish transfers, turn the radio off and close Feather. After
@@ -101,3 +101,11 @@ selection in Settings. Device identifiers can change; if a saved device cannot b
 matched, choose it again. Drop-to-share does not change the normal radio timeout
 preference. Thirty-minute sessions remain accepted by the service for older clients
 but are no longer offered in the compact UI.
+
+
+The application, applet, QML module and session D-Bus service use
+`io.github.obegron.feather`. Feather is an independent project, not an official
+KDE application. On upgrading from the former `org.kde.feather` applet, finish
+transfers, turn the radio off, remove the old tray widget, close Feather and stop
+the old session service (`pkill -x feather-session`). After upgrading, add Feather
+again from System Tray settings. KConfig preferences remain in `featherrc`.

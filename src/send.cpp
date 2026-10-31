@@ -14,8 +14,8 @@ int main(int argc, char **argv) {
   if (urls.isEmpty())
     return 1;
   auto request =
-      QDBusMessage::createMethodCall("org.kde.Feather", "/org/kde/Feather",
-                                     "org.kde.Feather.Radio1", "SendFiles");
+      QDBusMessage::createMethodCall("io.github.obegron.feather", "/io/github/obegron/feather",
+                                     "io.github.obegron.feather.Radio1", "SendFiles");
   request << urls;
   QDBusReply<void> reply = QDBusConnection::sessionBus().call(request);
   if (!reply.isValid()) {

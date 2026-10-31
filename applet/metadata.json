@@ -1,6 +1,6 @@
 {
  "KPlugin": {
-  "Id": "org.kde.feather",
+  "Id": "io.github.obegron.feather",
   "Name": "Feather",
   "Description": "AirDrop file sharing powered by Owly",
   "Icon": "network-wireless",

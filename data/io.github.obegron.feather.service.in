@@ -1,3 +1,3 @@
 [D-BUS Service]
-Name=org.kde.Feather
+Name=io.github.obegron.feather
 Exec=@CMAKE_INSTALL_FULL_BINDIR@/feather-session

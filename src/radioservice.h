@@ -7,7 +7,7 @@
 class RadioService : public QObject {
   friend class RadioTest;
   Q_OBJECT
-  Q_CLASSINFO("D-Bus Interface", "org.kde.Feather.Radio1")
+  Q_CLASSINFO("D-Bus Interface", "io.github.obegron.feather.Radio1")
 public:
   explicit RadioService(QDBusConnection bus, QObject *parent = nullptr);
   void setTransferCount(int count);

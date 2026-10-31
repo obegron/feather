@@ -79,8 +79,8 @@ private slots:
                                    QDBusConnection::ExportAllSignals |
                                    QDBusConnection::ExportAllProperties));
     RadioService radio(bus);
-    QVERIFY(bus.registerService("org.kde.Feather"));
-    QVERIFY(bus.registerObject("/org/kde/Feather", &radio,
+    QVERIFY(bus.registerService("io.github.obegron.feather"));
+    QVERIFY(bus.registerObject("/io/github/obegron/feather", &radio,
                                QDBusConnection::ExportAllSlots |
                                    QDBusConnection::ExportAllSignals));
     Bridge bridge;
