@@ -41,7 +41,10 @@ will not appear in the applet or receive Feather's lifetime protection.
 ## Compact sharing flow
 
 - Right-click Feather for Send files and Receive files. Drop a local file onto
-  the tray icon or open popup; the drag must use Copy, never remove the original.
+  the tray icon; the drag must use Copy, never remove the original.
+  For the popup, copy files in Dolphin, open Feather and use Paste files or Ctrl+V.
+  Clipboard content and original files must remain unchanged; text, folders and
+  remote URLs must not start a share.
 - With radio off and the Wi-Fi warning enabled, cancel the warning once: no lease
   may be acquired and the warning preference must remain unchanged. Confirm the
   next attempt; it must acquire an unlimited lease without changing the ordinary

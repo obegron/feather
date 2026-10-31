@@ -93,6 +93,11 @@ retain their MIT notices; compiled Rust dependency notices are bundled in
 `adapter/THIRD_PARTY_LICENSES`. Qt/KDE dependencies retain their own licenses.
 
 
+Copy files in Dolphin, open Feather and choose **Paste files** to share from the
+clipboard. The popup closes on focus changes, so it uses paste instead of a drop
+target; dropping onto the tray icon remains available. Plain text, remote URLs and
+folders are not accepted from the clipboard. The clipboard is left unchanged.
+
 Dropping files or using a sharing shortcut enables the radio until turned off,
 with Wi-Fi confirmation when required. It then searches for recipients and opens
 a device picker. The **Remember this device** option only preselects a rediscovered
