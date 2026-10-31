@@ -68,7 +68,7 @@ Plasma session acceptance pass.
 
 ## Install on Arch Linux
 
-A local-checkout [PKGBUILD](packaging/arch/PKGBUILD) is included. Install `owly` separately,
+A local-checkout [PKGBUILD](packaging/arch/PKGBUILD) is included. Install `owly` separately (a compatible source installation also works),
 then run `cd packaging/arch && makepkg -si` to build, test and install Feather.
 See [Arch package instructions](packaging/arch/README.md) for prerequisites,
 tray setup and restricted-container test limitations.
@@ -78,3 +78,10 @@ tray setup and restricted-container test limitations.
 Feather's original code is licensed under the [MIT License](LICENSE).
 Owly and the Qt/KDE dependencies retain their own licenses. Preserve upstream
 copyright and license notices when incorporating third-party source code.
+
+The tray icon shows a shrinking countdown ring and rounded-up minutes badge for
+timed sessions; its tooltip shows an approximate `mm:ss` countdown. Unlimited
+sessions use a steady active ring. The session duration is captured on activation;
+changing the next timeout does not change the current lease or its progress ring.
+Adding time and protecting active transfers require Owly lease renewal and transfer
+integration; these are planned, not available in this radio-only preview.

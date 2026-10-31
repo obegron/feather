@@ -2,12 +2,14 @@
 # No source download is needed. See README.md.
 pkgname=feather-plasma
 pkgver=0.1.0
-pkgrel=1
+pkgrel=7
 pkgdesc='Native Plasma 6 AirDrop radio controls powered by Owly (developer preview)'
 arch=('x86_64' 'aarch64')
 license=('MIT')
 depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-declarative' 'kconfig'
-         'libplasma' 'plasma-workspace' 'kirigami' 'systemsettings' 'plasma-nm' 'owly')
+         'libplasma' 'plasma-workspace' 'kirigami' 'systemsettings' 'plasma-nm')
+optdepends=('owly: AirDrop radio backend; alternatively install compatible owlyd from source')
+options=('!debug')
 makedepends=('cmake' 'ninja')
 checkdepends=('dbus')
 source=()

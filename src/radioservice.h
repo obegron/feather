@@ -33,7 +33,7 @@ private:
   QString m_owner;
   qulonglong m_lease = 0;
   qint64 m_deadline = 0;
-  uint m_duration = 600;
+  uint m_duration = 600, m_activeDuration = 0;
   bool m_warning = true, m_pending = false, m_refreshing = false;
   quint64 m_epoch = 0;
 };

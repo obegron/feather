@@ -13,7 +13,7 @@ Bridge::Bridge(QObject *parent) : QObject(parent) {
   auto bus = QDBusConnection::sessionBus();
   bus.connect(service, path, iface, "Changed", this, SLOT(update(QVariantMap)));
   bus.connect(service, path, iface, "WarningRequired", this,
-              SIGNAL(warningRequired()));
+              SLOT(handleWarningRequired()));
   auto *watch = new QDBusServiceWatcher(
       service, bus, QDBusServiceWatcher::WatchForOwnerChange, this);
   connect(watch, &QDBusServiceWatcher::serviceOwnerChanged, this,
@@ -33,6 +33,7 @@ Bridge::Bridge(QObject *parent) : QObject(parent) {
           });
   QTimer::singleShot(0, this, &Bridge::refresh);
 }
+void Bridge::handleWarningRequired() { emit warningRequired(); }
 void Bridge::update(QVariantMap snapshot) {
   m_snapshot = std::move(snapshot);
   emit changed();

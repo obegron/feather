@@ -10,13 +10,16 @@ Install Arch's build tools first if needed:
 sudo pacman -S --needed base-devel
 ```
 
-Install the separate `owly` package first (Owly documents `yay -S owly` for Arch).
-`makepkg -s` installs repository dependencies but cannot fetch AUR dependencies.
+Owly is required for radio operation but is an optional package dependency so
+a source-installed `owlyd` is supported. If needed, install the separate `owly`
+package (`yay -S owly`). `makepkg -s` cannot fetch AUR dependencies.
+A compatible source installation must include owlyd’s system D-Bus configuration
+and Polkit policy, not just its executable.
 Then run from the Feather checkout:
 
 ```sh
 cd packaging/arch
-makepkg -si
+makepkg -fsi
 ```
 
 The check phase runs lifecycle tests on a private D-Bus without touching the live
@@ -38,3 +41,7 @@ Networks if Wi-Fi fails to reconnect after stopping the radio.
 
 Remove the frontend with `sudo pacman -R feather-plasma` after turning its radio
 off. Owly is independently packaged and managed.
+
+The recipe disables separate debug packages. If an earlier attempt installed only
+`feather-plasma-debug`, remove it with `sudo pacman -R feather-plasma-debug`.
+Rebuild with `makepkg -fsi` after recipe changes so an old archive is not reused.

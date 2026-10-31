@@ -20,6 +20,7 @@ signals:
   void changed();
   void warningRequired();
 private slots:
+  void handleWarningRequired();
   void update(QVariantMap snapshot);
 
 private:

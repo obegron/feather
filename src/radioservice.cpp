@@ -37,7 +37,7 @@ QVariantMap RadioService::Snapshot() const {
   return {{"state", m_state},         {"detail", m_detail},
           {"owned", m_lease != 0},    {"duration", m_duration},
           {"showWarning", m_warning}, {"deadline", m_deadline},
-          {"busy", m_pending}};
+          {"activeDuration", m_activeDuration}, {"busy", m_pending}};
 }
 void RadioService::publish() { emit Changed(Snapshot()); }
 void RadioService::ownerChanged(const QString &, const QString &,
@@ -46,6 +46,7 @@ void RadioService::ownerChanged(const QString &, const QString &,
   m_owner = owner;
   m_lease = 0;
   m_deadline = 0;
+  m_activeDuration = 0;
   m_pending = false;
   m_refreshing = false;
   m_state = "unavailable";
@@ -86,11 +87,13 @@ void RadioService::reconcile() {
     if (m_lease && lease != m_lease) {
       m_lease = 0;
       m_deadline = 0;
+      m_activeDuration = 0;
     }
     if (state == "idle") {
       m_state = "off";
       m_lease = 0;
       m_deadline = 0;
+      m_activeDuration = 0;
     } else if (m_lease && lease == m_lease)
       m_state = state == "up" ? "on" : state;
     else
@@ -146,6 +149,7 @@ void RadioService::acquire() {
               return;
             }
             m_lease = reply.argumentAt<0>();
+            m_activeDuration = duration;
             m_deadline =
                 duration ? QDateTime::currentSecsSinceEpoch() + duration : 0;
             m_state = "on";
@@ -178,6 +182,7 @@ void RadioService::Disable() {
     } else {
       m_lease = 0;
       m_deadline = 0;
+      m_activeDuration = 0;
       m_state = "off";
     }
     publish();

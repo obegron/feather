@@ -1,4 +1,5 @@
 #include "radioservice.h"
+#include "bridge.h"
 #include <KConfigGroup>
 #include <QDBusContext>
 #include <QDBusMessage>
@@ -65,6 +66,18 @@ private slots:
                                    QDBusConnection::ExportAllSignals |
                                    QDBusConnection::ExportAllProperties));
     RadioService radio(bus);
+    QVERIFY(bus.registerService("org.kde.Feather"));
+    QVERIFY(bus.registerObject("/org/kde/Feather", &radio,
+                               QDBusConnection::ExportAllSlots |
+                                   QDBusConnection::ExportAllSignals));
+    Bridge bridge;
+    QSignalSpy bridgeWarning(&bridge, &Bridge::warningRequired);
+    QTRY_COMPARE(bridge.snapshot()["state"].toString(), QString("off"));
+    // Exercise the actual applet-to-service path, including D-Bus signal delivery.
+    bridge.enable();
+    QTRY_COMPARE(bridgeWarning.count(), 1);
+    QCOMPARE(fake.acquisitions, 0);
+
     QSignalSpy warning(&radio, &RadioService::WarningRequired);
     QTRY_COMPARE(radio.Snapshot()["state"].toString(), QString("off"));
     QCOMPARE(radio.Snapshot()["duration"].toUInt(), 600u);
@@ -82,7 +95,9 @@ private slots:
     QCOMPARE(fake.duration, 600u);
     QVERIFY(radio.Snapshot()["owned"].toBool());
     QVERIFY(radio.Snapshot()["deadline"].toLongLong() > 0);
+    QCOMPARE(radio.Snapshot()["activeDuration"].toUInt(), 600u);
     radio.SetDuration(1800);
+    QCOMPARE(radio.Snapshot()["activeDuration"].toUInt(), 600u);
     QCOMPARE(fake.duration, 600u);
     fake.failRelease = true;
     radio.Disable();
