@@ -1,10 +1,10 @@
 {
  "KPlugin": {
-  "Id": "org.kde.feather",
+  "Id": "io.github.obegron.feather",
   "Name": "Feather",
-  "Description": "AirDrop radio developer preview powered by Owly",
+  "Description": "AirDrop file sharing powered by Owly",
   "Icon": "network-wireless",
-  "Version": "0.1.0",
+  "Version": "0.3.0",
   "License": "MIT",
   "Authors": [{"Name": "Feather contributors"}],
   "Category": "Network"

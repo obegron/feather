@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+Name=Send with Feather
+MimeType=application/octet-stream;
+Actions=send;
+X-KDE-Protocol=file
+
+[Desktop Action send]
+Name=Send with Feather
+Icon=document-send
+Exec=feather-send %U

@@ -4,7 +4,7 @@ import QtQuick.Controls as QQC2
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
-import org.kde.feather
+import io.github.obegron.feather
 
 PlasmoidItem {
     id: root
@@ -13,27 +13,72 @@ PlasmoidItem {
     property bool suppressWarning: false
     property bool settingsOpen: false
     property double now: Date.now() / 1000
-    readonly property bool timed: !!radio.owned && Number(radio.deadline) > 0
+    readonly property bool timerUnknown: radio.timerKnown === false
+    readonly property bool timed: !!radio.owned && Number(radio.deadline) > 0 && !timerUnknown
     readonly property int secondsLeft: timed ? Math.max(0, Math.ceil(Number(radio.deadline) - now)) : 0
-    readonly property int minutesLeft: Math.ceil(secondsLeft / 60)
-    readonly property real remainingFraction: timed && Number(radio.activeDuration) > 0 ? Math.min(1, secondsLeft / Number(radio.activeDuration)) : 0
+    // An installed update may talk to a session service started before
+    // activeDuration existed. Capture an estimate once, never on each tick.
+    property double observedDeadline: 0
+    property real fallbackDuration: 0
+    readonly property real ringDuration: Number(radio.activeDuration) > 0 ? Number(radio.activeDuration) : fallbackDuration
+    readonly property real remainingFraction: timed && ringDuration > 0 ? Math.max(0, Math.min(1, secondsLeft / ringDuration)) : 0
     readonly property string countdown: Math.floor(secondsLeft / 60) + ":" + (secondsLeft % 60 < 10 ? "0" : "") + secondsLeft % 60
-    readonly property string remaining: root.timed ? i18n("%1 remaining", root.countdown) : i18n("Until turned off")
+    readonly property string remaining: timerUnknown ? i18n("Timer status unknown") : root.timed && root.secondsLeft === 0 && Number(radio.transferCount) > 0 ? i18n("Finishing transfers") : root.timed ? i18n("%1 remaining", root.countdown) : i18n("Until turned off")
     readonly property string stateText: ({"off": i18n("Off"), "on": i18n("On"), "starting": i18n("Turning on…"), "stopping": i18n("Turning off…"), "external": i18n("In use by another app"), "unavailable": i18n("Unavailable"), "error": i18n("Couldn’t connect")})[radio.state] || i18n("Checking…")
-    readonly property bool canToggle: !confirmationPending && !radio.busy && (radio.owned || radio.state === "off" || radio.state === "error")
+    readonly property bool canToggle: !confirmationPending && !radio.busy && !(Number(radio.transferCount) > 0) && (radio.owned || radio.state === "off" || radio.state === "error")
     Plasmoid.title: i18n("Feather")
     Plasmoid.icon: "document-send"
     Plasmoid.status: radio.owned || radio.busy ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus
     toolTipMainText: i18n("Feather — AirDrop radio")
-    toolTipSubText: stateText + (radio.state === "on" ? " · " + remaining : "")
+    toolTipSubText: (Number(radio.transferCount) > 0 ? i18n("%1 active transfers", radio.transferCount) + " · " : "") + stateText + (radio.state === "on" ? " · " + remaining : "")
+    function shareDrop(drop) {
+        if (!drop.hasUrls || drop.urls.length === 0) { drop.accepted = false; return }
+        const urls = []
+        for (let i = 0; i < drop.urls.length; ++i) {
+            const url = drop.urls[i].toString()
+            if (!url.startsWith("file:")) { drop.accepted = false; return }
+            urls.push(url)
+        }
+        bridge.sendFiles(urls)
+        drop.accept(Qt.CopyAction)
+    }
+    Plasmoid.contextualActions: [
+        PlasmaCore.Action { text: i18n("Send files…"); icon.name: "document-send"; onTriggered: bridge.pickFiles() },
+        PlasmaCore.Action { text: i18n("Receive files"); icon.name: "download"; onTriggered: bridge.receiveFiles() }
+    ]
     preferredRepresentation: compactRepresentation
     compactRepresentation: QQC2.ToolButton {
         id: trayButton
         Accessible.name: i18n("Feather, %1", root.stateText) + (root.radio.owned ? ", " + root.remaining : "")
         onClicked: root.expanded = !root.expanded
+        QQC2.Menu {
+            id: trayMenu
+            QQC2.MenuItem { text: i18n("Send files…"); icon.name: "document-send"; onTriggered: bridge.pickFiles() }
+            QQC2.MenuItem { text: i18n("Receive files"); icon.name: "download"; onTriggered: bridge.receiveFiles() }
+            QQC2.MenuSeparator {}
+            QQC2.MenuItem { text: i18n("Settings"); icon.name: "configure"; onTriggered: { root.settingsOpen = true; root.expanded = true } }
+        }
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: function(mouse) { trayMenu.popup(mouse.x, mouse.y) }
+        }
         contentItem: Item {
             implicitWidth: Kirigami.Units.iconSizes.smallMedium
             implicitHeight: implicitWidth
+            Rectangle {
+                anchors.fill: parent
+                radius: Kirigami.Units.smallSpacing
+                visible: trayDrop.containsDrag
+                color: Kirigami.Theme.highlightColor
+                opacity: 0.2
+            }
+            DropArea {
+                id: trayDrop
+                anchors.fill: parent
+                onEntered: function(drag) { drag.accepted = drag.hasUrls }
+                onDropped: function(drop) { root.shareDrop(drop) }
+            }
             Kirigami.Icon {
                 anchors.centerIn: parent
                 width: Math.min(parent.width, parent.height) * (root.radio.owned ? 0.65 : 0.9)
@@ -48,8 +93,8 @@ PlasmoidItem {
                 width: Math.min(parent.width, parent.height)
                 height: width
                 visible: !!root.radio.owned
-                property real fraction: root.timed ? root.remainingFraction : 1
-                property color ringColor: Kirigami.Theme.highlightColor
+                property real fraction: root.timerUnknown ? 0 : root.timed ? root.remainingFraction : 1
+                property color ringColor: Kirigami.Theme.positiveTextColor
                 property color trackColor: Kirigami.Theme.textColor
                 onFractionChanged: requestPaint()
                 onRingColorChanged: requestPaint()
@@ -76,23 +121,7 @@ PlasmoidItem {
                     ctx.stroke()
                 }
             }
-            Rectangle {
-                visible: root.timed
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                width: Math.max(minuteBadge.implicitWidth + 4, parent.width * 0.48)
-                height: Math.max(minuteBadge.implicitHeight, parent.height * 0.45)
-                radius: height / 2
-                color: Kirigami.Theme.highlightColor
-                QQC2.Label {
-                    id: minuteBadge
-                    anchors.centerIn: parent
-                    text: root.minutesLeft > 0 ? String(root.minutesLeft) : "<1"
-                    color: Kirigami.Theme.highlightedTextColor
-                    font.pixelSize: Math.max(8, Math.min(trayButton.width, trayButton.height) * 0.3)
-                    font.bold: true
-                }
-            }
+
         }
     }
     onExpandedChanged: {
@@ -101,6 +130,14 @@ PlasmoidItem {
     }
     Bridge {
         id: bridge
+        onChanged: {
+            const snapshot = bridge.snapshot
+            const deadline = Number(snapshot.deadline) || 0
+            if (deadline !== root.observedDeadline) {
+                root.observedDeadline = deadline
+                root.fallbackDuration = deadline > 0 ? Math.max(1, deadline - Date.now() / 1000, Number(snapshot.duration) || 0) : 0
+            }
+        }
         onWarningRequired: {
             root.suppressWarning = false
             root.confirmationPending = true
@@ -111,11 +148,22 @@ PlasmoidItem {
     fullRepresentation: QQC2.ScrollView {
         id: panel
         Layout.minimumWidth: Kirigami.Units.gridUnit * 18
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 20
-        Layout.minimumHeight: Kirigami.Units.gridUnit * 14
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 17
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+        Layout.minimumHeight: Kirigami.Units.gridUnit * 9
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 11
         contentWidth: availableWidth
         clip: true
+        QQC2.Menu {
+            id: panelMenu
+            QQC2.MenuItem { text: i18n("Send files…"); icon.name: "document-send"; onTriggered: bridge.pickFiles() }
+            QQC2.MenuItem { text: i18n("Receive files"); icon.name: "download"; onTriggered: bridge.receiveFiles() }
+        }
+        MouseArea {
+            parent: panel
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: function(mouse) { panelMenu.popup(mouse.x, mouse.y) }
+        }
         ColumnLayout {
             width: panel.availableWidth
             spacing: Kirigami.Units.largeSpacing
@@ -124,6 +172,12 @@ PlasmoidItem {
             QQC2.Pane {
                 Layout.fillWidth: true
                 padding: Kirigami.Units.largeSpacing
+                DropArea {
+                    parent: panel
+                    anchors.fill: parent
+                    onEntered: function(drag) { drag.accepted = drag.hasUrls }
+                    onDropped: function(drop) { root.shareDrop(drop) }
+                }
                 contentItem: ColumnLayout {
                     spacing: Kirigami.Units.largeSpacing
                     RowLayout {
@@ -131,7 +185,7 @@ PlasmoidItem {
                         ColumnLayout {
                             spacing: 0
                             Kirigami.Heading { text: i18n("Feather"); level: 2 }
-                            QQC2.Label { text: i18n("AirDrop radio"); opacity: 0.7 }
+                            QQC2.Label { text: root.radio.receiving ? i18n("Ready to receive") : i18n("AirDrop"); opacity: 0.7 }
                         }
                         Item { Layout.fillWidth: true }
                         QQC2.ToolButton {
@@ -161,29 +215,52 @@ PlasmoidItem {
                             }
                         }
                     }
-                    ColumnLayout {
-                        visible: !root.confirmationPending && !root.settingsOpen
+                    RowLayout {
+                        visible: !root.confirmationPending && !root.settingsOpen && (!root.radio.owned || root.timed)
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-                        QQC2.Label { text: root.radio.owned ? i18n("Next time, turn off after") : i18n("Turn off after"); opacity: 0.7 }
-                        QQC2.Slider {
-                            id: timeoutSlider
+                        enabled: !root.radio.busy && (!root.radio.owned || root.radio.canRenew)
+                        QQC2.Button {
+                            text: root.radio.owned ? i18n("+5 min") : i18n("5 min")
                             Layout.fillWidth: true
-                            from: 0; to: 2; stepSize: 1
-                            snapMode: QQC2.Slider.SnapAlways
-                            value: Number(root.radio.duration) === 600 ? 0 : Number(root.radio.duration) === 1800 ? 1 : 2
-                            Accessible.name: i18n("Radio timeout")
-                            Accessible.description: [i18n("10 minutes"), i18n("30 minutes"), i18n("Until turned off")][Math.round(value)]
-                            onMoved: bridge.setDuration([600, 1800, 0][Math.round(value)])
+                            checkable: !root.radio.owned
+                            checked: !root.radio.owned && Number(root.radio.duration) === 300
+                            onClicked: root.radio.owned ? bridge.addTime(300) : bridge.setDuration(300)
                         }
-                        RowLayout {
+                        QQC2.Button {
+                            text: root.radio.owned ? i18n("+10 min") : i18n("10 min")
                             Layout.fillWidth: true
-                            QQC2.Label { text: i18n("10 min"); font.bold: Math.round(timeoutSlider.value) === 0 }
-                            Item { Layout.fillWidth: true }
-                            QQC2.Label { text: i18n("30 min"); font.bold: Math.round(timeoutSlider.value) === 1 }
-                            Item { Layout.fillWidth: true }
-                            QQC2.Label { text: i18n("Until off"); font.bold: Math.round(timeoutSlider.value) === 2 }
+                            checkable: !root.radio.owned
+                            checked: !root.radio.owned && Number(root.radio.duration) === 600
+                            onClicked: root.radio.owned ? bridge.addTime(600) : bridge.setDuration(600)
                         }
+                        QQC2.Button {
+                            text: "∞"
+                            font.pixelSize: Kirigami.Units.iconSizes.smallMedium
+                            Accessible.name: i18n("Until turned off")
+                            QQC2.ToolTip.text: i18n("Until turned off")
+                            QQC2.ToolTip.visible: hovered
+                            Layout.fillWidth: true
+                            checkable: !root.radio.owned
+                            checked: !root.radio.owned && Number(root.radio.duration) === 0
+                            onClicked: root.radio.owned ? bridge.addTime(0) : bridge.setDuration(0)
+                        }
+                    }
+                    ColumnLayout {
+                        visible: !!root.radio.owned && !root.confirmationPending && !root.settingsOpen
+                        Layout.fillWidth: true
+                        Repeater {
+                            model: root.radio.transfers || []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Kirigami.Icon { source: modelData.direction === "incoming" ? "download" : "upload"; implicitWidth: Kirigami.Units.iconSizes.small; implicitHeight: implicitWidth }
+                                QQC2.Label {
+                                    text: modelData.state === "stopping" ? i18n("Finishing transfer cleanup…") : modelData.state === "approval" ? i18n("Awaiting approval: %1", modelData.name) : modelData.direction === "incoming" ? i18n("Receiving from %1", modelData.name) : i18n("Sending to %1", modelData.name)
+                                    textFormat: Text.PlainText; elide: Text.ElideRight; Layout.fillWidth: true
+                                }
+                            }
+                        }
+                        QQC2.Label { visible: !!root.radio.transferError; text: root.radio.transferError || ""; textFormat: Text.PlainText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
                     ColumnLayout {
                         visible: root.confirmationPending
@@ -221,15 +298,16 @@ PlasmoidItem {
                             icon.name: "dialog-warning"
                             onClicked: bridge.resetWarning()
                         }
+                        QQC2.Button { visible: !!root.radio.rememberedRecipient; text: i18n("Forget saved device"); icon.name: "edit-clear"; onClicked: bridge.forgetRecipient() }
                         QQC2.Button { text: i18n("Network settings"); icon.name: "network-wireless"; onClicked: bridge.openNetworkSettings() }
                         QQC2.Label {
-                            text: i18n("If Wi-Fi doesn’t reconnect, use Network settings. File sharing is coming later.")
+                            text: i18n("If Wi-Fi doesn’t reconnect, use Network settings. Received files are saved to Downloads.")
                             wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7
                         }
                         QQC2.CheckBox { id: details; text: i18n("Diagnostics") }
                         QQC2.Label {
                             visible: details.checked
-                            text: root.radio.detail || i18n("Radio powered by Owly. This preview controls the radio only.")
+                            text: root.radio.detail || i18n("Transfers powered by Owly.")
                             wrapMode: Text.WrapAnywhere; Layout.fillWidth: true
                         }
                     }
@@ -250,7 +328,7 @@ PlasmoidItem {
                     }
                     QQC2.Label {
                         visible: !root.settingsOpen && !root.confirmationPending
-                        text: i18n("Preview · radio controls only")
+                        text: i18n("Drop files here to share")
                         opacity: 0.6; font: Kirigami.Theme.smallFont
                     }
                 }

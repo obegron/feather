@@ -1,0 +1,14 @@
+[Global]
+Name=Feather
+Comment=AirDrop transfers
+IconName=document-send
+
+[Event/incoming]
+Name=Incoming files
+Comment=An AirDrop sender is asking to send files
+Action=Popup
+
+[Event/information]
+Name=Transfer information
+Comment=Information about an AirDrop transfer
+Action=Popup

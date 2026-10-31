@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Feather
+Comment=AirDrop for Plasma
+Exec=feather-send %U
+Icon=document-send
+NoDisplay=true
+Terminal=false
+Categories=Network;FileTransfer;

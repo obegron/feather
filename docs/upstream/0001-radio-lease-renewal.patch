@@ -1,0 +1,202 @@
+From a38a6fe9bde3e35ea9930c6f4f0df45e8a5c6a8a Mon Sep 17 00:00:00 2001
+From: obegron <christer.gronbladh@gmail.com>
+Date: Sat, 31 Oct 2026 13:29:11 +0100
+Subject: [PATCH] Let a lease holder renew the radio timeout
+
+---
+ crates/owlyd/src/api.rs       |  8 +++-
+ crates/owlyd/src/service.rs   | 49 +++++++++++++++++++++++
+ crates/owlyd/tests/service.rs | 73 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 128 insertions(+), 2 deletions(-)
+
+diff --git a/crates/owlyd/src/api.rs b/crates/owlyd/src/api.rs
+index 5f83d8f..7a8f498 100644
+--- a/crates/owlyd/src/api.rs
++++ b/crates/owlyd/src/api.rs
+@@ -7,6 +7,7 @@
+ //! | `Acquire(u duration) → (t lease, a{sv} link)` | brings the radio up and leases it to the caller, for `duration` seconds or, with 0, until released. polkit decides who may (`io.github.t4t5.Owly.acquire`); root may |
+ //! | `AcquireDetached(u duration) → (t lease, a{sv} link)` | the same, for root only, with a lease that outlives its caller on the bus: for omdrop's hooks, which take the radio in one process and give it back in another |
+ //! | `Release(t lease)` | ends the lease, the caller's own or, for root, a detached one; returns once Wi-Fi is back |
++//! | `Renew(t lease, u duration)` | resets the lease timeout from now, without restarting the radio; 0 removes the timeout. Ownership rules are the same as `Release` |
+ //! | signal `StateChanged(t lease, s state, s reason)` | the radio's state changed, and why |
+ //! | property `State` (s) | `idle`, `starting`, `up` or `stopping` |
+ //! | property `Lease` (t) | the lease held, or 0 |
+@@ -15,8 +16,10 @@
+ //! | property `LastEnd` (ts) | the last lease to end, and why: the reason its `StateChanged` to `idle` gave |
+ //!
+ //! A lease ends on `Release`, when its duration runs out, when its owner
+-//! drops off the bus (unless it's detached), or when the link is lost. Each has a fresh number,
+-//! and calls naming another fail, so a client that reconnects can't act on
++//! drops off the bus (unless it's detached), or when the link is lost. Each has a fresh number.
++//! Renewing keeps its number and link; an expired lease cannot be renewed.
++//! A finite renewal still expires if the client stops renewing it.
++//! Calls naming another fail, so a client that reconnects can't act on
+ //! a session it no longer owns. The link dictionary holds `interface` (s),
+ //! `index` (u), `mac` (s), `address` (s) and, when receivers on the link
+ //! repeat their mDNS announcements in bursts (MDNS-7), `announce` as
+@@ -46,6 +49,7 @@ pub trait Radio {
+     fn acquire(&self, duration: u32) -> zbus::Result<(u64, HashMap<String, OwnedValue>)>;
+     fn acquire_detached(&self, duration: u32) -> zbus::Result<(u64, HashMap<String, OwnedValue>)>;
+     fn release(&self, lease: u64) -> zbus::Result<()>;
++    fn renew(&self, lease: u64, duration: u32) -> zbus::Result<()>;
+ 
+     #[zbus(signal, name = "StateChanged")]
+     fn radio_state(&self, lease: u64, state: String, reason: String) -> zbus::Result<()>;
+diff --git a/crates/owlyd/src/service.rs b/crates/owlyd/src/service.rs
+index f78ec16..cf1e43d 100644
+--- a/crates/owlyd/src/service.rs
++++ b/crates/owlyd/src/service.rs
+@@ -81,6 +81,13 @@ enum Cmd {
+         lease: u64,
+         reply: Reply<()>,
+     },
++    Renew {
++        owner: OwnedUniqueName,
++        root: bool,
++        lease: u64,
++        duration: u32,
++        reply: Reply<()>,
++    },
+     Shutdown,
+ }
+ 
+@@ -151,6 +158,27 @@ impl Radio {
+         rx.await.map_err(gone)?
+     }
+ 
++    async fn renew(
++        &self,
++        lease: u64,
++        duration: u32,
++        #[zbus(header)] header: Header<'_>,
++        #[zbus(connection)] conn: &zbus::Connection,
++    ) -> Result<(), ApiError> {
++        let owner = sender(&header)?;
++        let root = self.root(conn, &owner).await?;
++        let (reply, rx) = oneshot::channel();
++        self.send(Cmd::Renew {
++            owner,
++            root,
++            lease,
++            duration,
++            reply,
++        })
++        .await?;
++        rx.await.map_err(gone)?
++    }
++
+     #[zbus(signal, name = "StateChanged")]
+     async fn radio_state(
+         emitter: &SignalEmitter<'_>,
+@@ -468,6 +496,27 @@ impl<B: Backend> Task<B> {
+                 };
+                 let _ = reply.send(r);
+             }
++            Cmd::Renew {
++                owner,
++                root,
++                lease,
++                duration,
++                reply,
++            } => {
++                // A command ready alongside expiry must not revive the lease.
++                if self
++                    .live
++                    .as_ref()
++                    .is_some_and(|l| l.expires.is_some_and(|at| at <= Instant::now()))
++                {
++                    self.end("expired").await;
++                }
++                let r = self.check(&owner, root, lease).map(|()| {
++                    self.live.as_mut().unwrap().expires = (duration > 0)
++                        .then(|| Instant::now() + Duration::from_secs(duration.into()));
++                });
++                let _ = reply.send(r);
++            }
+             Cmd::Shutdown => unreachable!("handled by the loop"),
+         }
+     }
+diff --git a/crates/owlyd/tests/service.rs b/crates/owlyd/tests/service.rs
+index 2e4e6d7..40bb793 100644
+--- a/crates/owlyd/tests/service.rs
++++ b/crates/owlyd/tests/service.rs
+@@ -374,3 +374,76 @@ async fn sigterm_takes_the_radio_down() {
+     assert!(!fx.awdl0());
+     assert_eq!(fx.calls(), ["up", "down"]);
+ }
++
++#[tokio::test(flavor = "multi_thread")]
++async fn renewing_keeps_the_link_until_the_new_timeout() {
++    let fx = Fx::new().await;
++    let (_c, radio) = fx.radio().await;
++    let (lease, link) = radio.acquire(1).await.unwrap();
++    radio.renew(lease, 3).await.unwrap();
++    tokio::time::sleep(Duration::from_millis(1200)).await;
++    assert_eq!(radio.current_state().await.unwrap(), "up");
++    assert_eq!(radio.lease().await.unwrap(), lease);
++    assert_eq!(
++        LinkInfo::from_dict(&radio.link().await.unwrap()),
++        LinkInfo::from_dict(&link)
++    );
++    assert_eq!(fx.calls(), ["up"], "renewal doesn't cycle the radio");
++    state_becomes(&radio, "idle").await;
++    assert_eq!(radio.last_end().await.unwrap(), (lease, "expired".into()));
++    assert_eq!(fx.calls(), ["up", "down"]);
++    let e = radio.renew(lease, 10).await.unwrap_err();
++    assert_eq!(error_name(&e), "StaleLease");
++    assert!(!fx.awdl0());
++}
++
++#[tokio::test(flavor = "multi_thread")]
++async fn renewal_can_remove_and_restore_a_timeout() {
++    let fx = Fx::new().await;
++    let (_c, radio) = fx.radio().await;
++    let (lease, _) = radio.acquire(1).await.unwrap();
++    radio.renew(lease, 0).await.unwrap();
++    tokio::time::sleep(Duration::from_millis(1200)).await;
++    assert_eq!(radio.current_state().await.unwrap(), "up");
++    radio.renew(lease, 1).await.unwrap();
++    state_becomes(&radio, "idle").await;
++    assert_eq!(radio.last_end().await.unwrap(), (lease, "expired".into()));
++    assert_eq!(fx.calls(), ["up", "down"]);
++}
++
++#[tokio::test(flavor = "multi_thread")]
++async fn renewal_checks_the_lease_and_its_owner() {
++    let fx = Fx::new().await;
++    let (_a, owner) = fx.radio().await;
++    let (_b, other) = fx.radio().await;
++    let (lease, _) = owner.acquire(0).await.unwrap();
++    // The fake treats other callers as root, which still cannot renew an
++    // attached lease held by someone else.
++    let e = other.renew(lease, 1).await.unwrap_err();
++    assert_eq!(error_name(&e), "StaleLease");
++    let e = owner.renew(lease + 1, 1).await.unwrap_err();
++    assert_eq!(error_name(&e), "StaleLease");
++    owner.release(lease).await.unwrap();
++    let (next, _) = owner.acquire_detached(0).await.unwrap();
++    let e = owner.renew(lease, 1).await.unwrap_err();
++    assert_eq!(error_name(&e), "StaleLease");
++    other.renew(next, 1).await.unwrap();
++    state_becomes(&other, "idle").await;
++    assert_eq!(other.last_end().await.unwrap(), (next, "expired".into()));
++}
++
++#[tokio::test(flavor = "multi_thread")]
++async fn renewal_does_not_detach_a_lease_from_its_owner() {
++    let fx = Fx::new().await;
++    let (_watcher_conn, watcher) = fx.radio().await;
++    {
++        let (conn, radio) = fx.radio().await;
++        let (lease, _) = radio.acquire(1).await.unwrap();
++        radio.renew(lease, 0).await.unwrap();
++        drop(radio);
++        drop(conn);
++    }
++    state_becomes(&watcher, "idle").await;
++    assert_eq!(fx.calls(), ["up", "down"]);
++    assert_eq!(watcher.last_end().await.unwrap().1, "owner-gone");
++}
+-- 
+2.56.0
+
