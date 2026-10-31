@@ -158,7 +158,7 @@ PlasmoidItem {
         contentWidth: availableWidth
         clip: true
         Shortcut {
-            sequence: StandardKey.Paste
+            sequences: [StandardKey.Paste]
             enabled: root.expanded && !root.settingsOpen && !root.confirmationPending
             onActivated: root.pasteCopiedFiles()
         }
