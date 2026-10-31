@@ -51,6 +51,18 @@ PlasmoidItem {
         id: trayButton
         Accessible.name: i18n("Feather, %1", root.stateText) + (root.radio.owned ? ", " + root.remaining : "")
         onClicked: root.expanded = !root.expanded
+        QQC2.Menu {
+            id: trayMenu
+            QQC2.MenuItem { text: i18n("Send files…"); icon.name: "document-send"; onTriggered: bridge.pickFiles() }
+            QQC2.MenuItem { text: i18n("Receive files"); icon.name: "download"; onTriggered: bridge.receiveFiles() }
+            QQC2.MenuSeparator {}
+            QQC2.MenuItem { text: i18n("Settings"); icon.name: "configure"; onTriggered: { root.settingsOpen = true; root.expanded = true } }
+        }
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: function(mouse) { trayMenu.popup(mouse.x, mouse.y) }
+        }
         contentItem: Item {
             implicitWidth: Kirigami.Units.iconSizes.smallMedium
             implicitHeight: implicitWidth
@@ -141,6 +153,17 @@ PlasmoidItem {
         Layout.preferredHeight: Kirigami.Units.gridUnit * 11
         contentWidth: availableWidth
         clip: true
+        QQC2.Menu {
+            id: panelMenu
+            QQC2.MenuItem { text: i18n("Send files…"); icon.name: "document-send"; onTriggered: bridge.pickFiles() }
+            QQC2.MenuItem { text: i18n("Receive files"); icon.name: "download"; onTriggered: bridge.receiveFiles() }
+        }
+        MouseArea {
+            parent: panel
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: function(mouse) { panelMenu.popup(mouse.x, mouse.y) }
+        }
         ColumnLayout {
             width: panel.availableWidth
             spacing: Kirigami.Units.largeSpacing

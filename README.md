@@ -1,7 +1,7 @@
 # Feather — AirDrop for Plasma
 
 A native Plasma 6 tray applet powered by Owly. Enable the radio to receive files,
-right-click for Send/Receive shortcuts, or drop files onto the tray icon.
+right-click the icon or popup for Send/Receive shortcuts, or drop files onto the tray icon.
 Dolphin also provides **Send with Feather**.
 Incoming offers ask for native Accept/Decline consent. Both directions appear in
 Plasma's transfer job UI, where they can be cancelled. Files are saved to Downloads.
