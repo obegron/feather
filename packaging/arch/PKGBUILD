@@ -1,17 +1,18 @@
 # Local-checkout package: run makepkg -si from packaging/arch.
 # No source download is needed. See README.md.
 pkgname=feather-plasma
-pkgver=0.1.0
-pkgrel=7
-pkgdesc='Native Plasma 6 AirDrop radio controls powered by Owly (developer preview)'
+pkgver=0.3.0
+pkgrel=1
+pkgdesc='Native Plasma 6 AirDrop file sharing powered by Owly (preview)'
 arch=('x86_64' 'aarch64')
 license=('MIT')
 depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-declarative' 'kconfig'
-         'libplasma' 'plasma-workspace' 'kirigami' 'systemsettings' 'plasma-nm')
+         'libplasma' 'plasma-workspace' 'kirigami' 'systemsettings' 'plasma-nm' 'kio' 'knotifications' 'kjobwidgets')
 optdepends=('owly: AirDrop radio backend; alternatively install compatible owlyd from source')
-options=('!debug')
-makedepends=('cmake' 'ninja')
-checkdepends=('dbus')
+# GCC LTO objects from ring's C code cannot be linked by Rust's LLVM linker.
+options=('!debug' '!lto')
+makedepends=('cmake' 'ninja' 'rust' 'cargo')
+checkdepends=('dbus' 'python')
 source=()
 sha256sums=()
 
@@ -21,11 +22,20 @@ prepare() {
   mkdir -p "$srcdir/feather-plasma"
   cp -a "$startdir/../.."/{CMakeLists.txt,LICENSE,src,applet,data,tests} \
     "$srcdir/feather-plasma/"
+  mkdir -p "$srcdir/feather-plasma/adapter"
+  cp -a "$startdir/../../adapter"/{Cargo.toml,Cargo.lock,README.md,src,tests,vendor,patches,THIRD_PARTY_LICENSES} "$srcdir/feather-plasma/adapter/"
+  cargo fetch --manifest-path "$srcdir/feather-plasma/adapter/Cargo.toml" --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
 }
 
 build() {
+  local rust_sysroot
+  rust_sysroot=$(rustc --print sysroot)
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${rust_sysroot}=/usr/src/rust --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/usr/src/cargo --remap-path-prefix=${srcdir}=/usr/src/debug/${pkgname}"
   cmake -S "$srcdir/feather-plasma" -B "$srcdir/build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
+    -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS" \
+    -DCMAKE_SHARED_LINKER_FLAGS="$LDFLAGS" \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DFEATHER_QML_INSTALL_DIR=/usr/lib/qt6/qml \

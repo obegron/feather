@@ -1,87 +1,103 @@
-# Feather — AirDrop radio developer preview
+# Feather — AirDrop for Plasma
 
-A native Plasma 6 tray applet, powered by Owly. This preview controls the
-AirDrop radio only. **File sharing, receiving, recipient discovery and Dolphin
-integration are not implemented.** No radio is enabled at login or when opening
-the applet.
+A native Plasma 6 tray applet powered by Owly. Enable the radio to receive files,
+right-click for Send/Receive shortcuts, or drop files onto the tray icon.
+Dolphin also provides **Send with Feather**.
+Incoming offers ask for native Accept/Decline consent. Both directions appear in
+Plasma's transfer job UI, where they can be cancelled. Files are saved to Downloads.
 
-Wi-Fi is unavailable while the Intel AX200 runs the AirDrop radio. Other adapters
-may also disconnect. Owly attempts restoration, but this preview does not yet
-reuse Owly CLI's user-session reconnection helper. KWallet-backed connections may
-need manual reconnection using **Open network settings**. An ended lease does not
-prove Wi-Fi or internet connectivity was restored.
+This is a development preview requiring local phone testing. URL offers and
+folder sending are not supported. Sender/device names are unverified display names.
 
-## Build and stage
+## Install on Arch
 
-Dependencies: CMake, C++20, Qt 6.6+ Core/DBus/Qml/Test, KF6 Config, Plasma 6 and
-Kirigami runtime QML modules. A separately installed, compatible `owlyd` provides
-`io.github.t4t5.Owly.Radio1` on the system bus and its Polkit policy. See
-[the source investigation](docs/INVESTIGATION.md).
+Install a compatible `owlyd` with its system D-Bus configuration and Polkit policy.
+A source installation works; the Arch `owly` package is an optional package
+dependency. Timed transfers and adding time require the local Owly fork's
+`Radio1.Renew` method. Without it, use **Until off** for transfers.
 
 ```sh
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr
+cd packaging/arch
+makepkg -fsi
+```
+
+See [Arch instructions](packaging/arch/README.md). Add Feather through System Tray
+settings. No radio is enabled automatically at login. To open it separately:
+
+```sh
+plasmawindowed org.kde.feather
+```
+
+Before upgrading, finish transfers, turn the radio off and close Feather. After
+installing, run `pkill -x feather-session` and reopen it to load the new service.
+**Stop any manually started `owly receive` process first**: both receivers use
+TCP 8771 on the same AWDL interface. Feather does not observe external CLI transfers.
+
+## Radio and transfers
+
+Choose 5 or 10 minutes, or **∞** (Until off). While timed radio is active, add
+5 or 10 minutes without restarting the link, or switch to **∞**. The tray ring
+shrinks with the timer; hover shows the remaining time. Unlimited sessions have a
+steady ring. A missing renewal acknowledgement marks the timer unknown rather
+than inventing a deadline.
+
+The off switch is disabled during incoming approval and active transfers. The
+service enforces this too. Before accepting or sending, Feather obtains a finite
+transfer grace period from Owly and refreshes it while work is active. When the
+original discovery timeout expires it stops advertising and accepting new work,
+lets current transfers finish, then releases the radio. If a transfer finishes
+before the discovery deadline, the original deadline is restored. Cancellation
+waits for cleanup; a final filesystem commit already underway finishes naturally.
+
+Outgoing progress is compressed upload bytes with a total. Incoming progress is
+actual extracted file bytes without a known total; native jobs show indeterminate
+progress rather than a fabricated percentage. Completion offers **Open folder**.
+
+On Intel AX200, radio operation interrupts normal Wi-Fi. Confirmation includes a
+persistent Don't ask again preference, resettable under Settings. Owly attempts
+restoration; the private CLI user-secret reconnect workaround is not yet reused.
+KWallet-backed networks may need manual reconnection through Network settings.
+Feather does not implement NetworkManager recovery or a Bluetooth stack.
+
+## Build and test
+
+Requires CMake, C++20, Rust/Cargo, Qt6 Core/DBus/Qml/Widgets/Test, KF6 Config, KIO,
+JobWidgets and Notifications, plus Plasma and Kirigami runtime QML modules. Fetch
+Rust dependencies for the host once, then build offline:
+
+```sh
+cargo fetch --manifest-path adapter/Cargo.toml --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 qmllint -I build -I /usr/lib/qt6/qml applet/contents/ui/main.qml
 DESTDIR="$PWD/build/stage" cmake --install build
 ```
 
-The QML import root defaults to `${CMAKE_INSTALL_LIBDIR}/qt6/qml`; override
-`FEATHER_QML_INSTALL_DIR` for the target distribution. Staging does not modify the
-running desktop. For a real package install, include the session executable,
-session D-Bus activation file, QML module and Plasma package together. D-Bus starts
-`feather-session` on demand. Add **Feather** in Plasma's widget chooser or System
-Tray settings after installing the package. No login autostart is required.
+D-Bus lifecycle and transfer-pipeline tests use a private bus and fake radio/helper;
+they never enable live hardware. They require local socket creation. Rust adapter
+and vendored-library tests also run from CTest. Hardware acceptance, native Plasma
+rendering, actual firewall setup and AX200/KWallet reconnection remain to be checked
+on a real host. See [local transfer acceptance](docs/LOCAL-TRANSFER-TEST.md).
 
-## Lifecycle and settings
-
-The session service owns an attached lease; closing the popup changes nothing.
-Only its own successful `Acquire` result can be released. Foreign leases are
-read-only. Daemon disappearance invalidates ownership; restart never reacquires.
-All remote calls are asynchronous. A failed release keeps ownership until daemon
-reconciliation proves that lease ended. `owlyd` enforces 10-minute, 30-minute or
-unlimited duration. The displayed deadline is approximate and starts after
-successful acquisition. A two-second status refresh reconciles after suspend.
-Changing duration applies to the next activation.
-
-The session service enforces the warning: `Enable` emits `WarningRequired`
-without acquiring unless the user previously suppressed it. `ConfirmEnable` is
-the explicit confirmation action; only this action can persist suppression.
-**Show activation warning again** resets it. Preferences use KConfig's
-`featherrc`, group `Radio`. No NetworkManager or BLE logic is duplicated.
-
-## Validation and release gate
-
-`radio-test` uses a fake Radio1 on an isolated `dbus-run-session` bus, without
-connecting to the real system daemon. It covers warning/cancellation,
-suppression/reset, duration settings, duplicate activation, acquire denial,
-failed release retaining ownership, foreign lease refusal, expiry and daemon
-loss/reappearance. It also checks persisted settings. Run it on a host permitting
-local sockets; a container denying `bind(2)` cannot start the private test bus.
-
-This is **not hardware verified**. Before release, extract/reuse Owly's existing
-user-session Wi-Fi recovery helper upstream and verify AX200/KWallet reconnection.
-Manual acceptance must cover explicit off, expiry, service process crash,
-suspend/resume, daemon restart, and actual Wi-Fi reconnection. Automated tests
-must never enable the live radio. UI layout and tray behavior also require a real
-Plasma session acceptance pass.
-
-## Install on Arch Linux
-
-A local-checkout [PKGBUILD](packaging/arch/PKGBUILD) is included. Install `owly` separately (a compatible source installation also works),
-then run `cd packaging/arch && makepkg -si` to build, test and install Feather.
-See [Arch package instructions](packaging/arch/README.md) for prerequisites,
-tray setup and restricted-container test limitations.
+The three desktop components are the Plasma applet, the Qt session service with
+its private Rust transfer subprocess, and Dolphin's service menu. The adapter uses
+Owly's public APIs and locally patched lifecycle callbacks rather than parsing CLI
+output. See [adapter provenance, IPC and upstream patches](adapter/README.md).
+No upstream PR will be created until local functionality is validated.
 
 ## License
 
-Feather's original code is licensed under the [MIT License](LICENSE).
-Owly and the Qt/KDE dependencies retain their own licenses. Preserve upstream
-copyright and license notices when incorporating third-party source code.
+Feather's original code is [MIT licensed](LICENSE). Vendored Owly code and BLE glue
+retain their MIT notices; compiled Rust dependency notices are bundled in
+`adapter/THIRD_PARTY_LICENSES`. Qt/KDE dependencies retain their own licenses.
 
-The tray icon shows a shrinking countdown ring and rounded-up minutes badge for
-timed sessions; its tooltip shows an approximate `mm:ss` countdown. Unlimited
-sessions use a steady active ring. The session duration is captured on activation;
-changing the next timeout does not change the current lease or its progress ring.
-Adding time and protecting active transfers require Owly lease renewal and transfer
-integration; these are planned, not available in this radio-only preview.
+
+Dropping files or using a sharing shortcut enables the radio until turned off,
+with Wi-Fi confirmation when required. It then searches for recipients and opens
+a device picker. The **Remember this device** option only preselects a rediscovered
+device; it never sends automatically or bypasses incoming consent. Forget the
+selection in Settings. Device identifiers can change; if a saved device cannot be
+matched, choose it again. Drop-to-share does not change the normal radio timeout
+preference. Thirty-minute sessions remain accepted by the service for older clients
+but are no longer offered in the compact UI.

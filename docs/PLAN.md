@@ -1,5 +1,7 @@
 # Feather — AirDrop for Plasma
 
+Implementation status: the 0.2 preview now includes the Rust adapter, native receive consent, incoming/outgoing KJobs, peer discovery, Dolphin service menu, and transfer-aware lease protection. See README.md and LOCAL-TRANSFER-TEST.md for current behavior and unverified acceptance checks. The radio-only sections below record the initial delivery plan.
+
 Working name selected after the architecture: Feather. Descriptor: “AirDrop for Plasma, powered by Owly”. Package feather-plasma; independent of KDE itself. Name availability has not been established.
 
 ## Architecture and scope
@@ -26,7 +28,7 @@ Radio slice includes explicit “File sharing is not available in this version.�
 
 Investigate actual Rust library callbacks before committing to API. Prefer a narrowly scoped Rust adapter using owly-airdrop behind the Qt service, with framed structured messages and transfer IDs; do not parse CLI prose. Adapter is private implementation, not a fourth desktop service. Owly CLI owns BlueZ glue currently; avoid reimplementing it and identify minimal upstream extraction if needed.
 
-Qt creates one cancellable KJob per transfer, registered through KIO's job tracker, in both directions. Accurate aggregate bytes when supplied; indeterminate otherwise; never fake per-file progress. Native incoming consent shows sender, file names/count and destination; reject on dismissal/timeout, never auto-accept. Sender names are untrusted. Map denial, disconnect, cancellation and extraction failure distinctly. Completed files open through KIO. Discovery expiry stops accepting new work; decide transfer-aware lease policy before shipping transfers (no surprise mid-transfer deadline). Explicit off during a transfer asks whether to cancel it. Applet shows summary and opens Plasma job UI rather than custom progress dialogs.
+Qt creates one cancellable KJob per transfer, registered through KIO's job tracker, in both directions. Accurate aggregate bytes when supplied; indeterminate otherwise; never fake per-file progress. Native incoming consent shows sender, file names/count and destination; reject on dismissal/timeout, never auto-accept. Sender names are untrusted. Map denial, disconnect, cancellation and extraction failure distinctly. Completed files open through KIO. Discovery expiry stops accepting new work; decide transfer-aware lease policy before shipping transfers (no surprise mid-transfer deadline). While any send/receive job is active, disable ordinary radio-off in the UI and enforce the same guard in the session service. Offer explicit transfer cancellation through native jobs. Before transfers ship, extend owlyd with an owner-authorized lease renewal operation so both automatic transfer grace time and a manual add-time action update the real daemon deadline. Do not reset the radio or merely extend the displayed timer. Stop accepting new transfers at discovery expiry; retain the link until existing jobs finish, then release it. Bound grace time and crash cleanup must remain daemon-enforced. Applet shows summary and opens Plasma job UI rather than custom progress dialogs.
 
 ## Delivery and validation
 

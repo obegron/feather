@@ -50,9 +50,9 @@ void Bridge::refresh() {
       return;
     if (reply.isError()) {
       m_snapshot["state"] = "unavailable";
-      m_snapshot["detail"] =
-          reply.error().message() + " Install/start feather-session via its "
-                                    "session D-Bus activation file.";
+      m_snapshot["detail"] = reply.error().message() +
+                             " Install/start feather-session via its "
+                             "session D-Bus activation file.";
       emit changed();
     } else
       update(reply.value());
@@ -78,8 +78,17 @@ void Bridge::confirmEnable(bool suppress) {
   invoke("ConfirmEnable", {suppress});
 }
 void Bridge::disable() { invoke("Disable"); }
+void Bridge::addTime(uint seconds) { invoke("AddTime", {seconds}); }
 void Bridge::setDuration(uint seconds) { invoke("SetDuration", {seconds}); }
 void Bridge::resetWarning() { invoke("ResetWarning"); }
 void Bridge::openNetworkSettings() {
   QProcess::startDetached("systemsettings", {"kcm_networkmanagement"});
 }
+
+void Bridge::pickFiles() { invoke("PickFiles"); }
+void Bridge::sendTo(const QString &peer) { invoke("PickFilesForPeer", {peer}); }
+void Bridge::browse() { invoke("Browse"); }
+
+void Bridge::receiveFiles() { invoke("ReceiveFiles"); }
+void Bridge::sendFiles(const QStringList &urls) { invoke("SendFiles", {urls}); }
+void Bridge::forgetRecipient() { invoke("ForgetRecipient"); }

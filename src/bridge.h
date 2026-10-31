@@ -12,9 +12,16 @@ public:
   Q_INVOKABLE void enable();
   Q_INVOKABLE void confirmEnable(bool suppress);
   Q_INVOKABLE void disable();
+  Q_INVOKABLE void addTime(uint seconds);
   Q_INVOKABLE void setDuration(uint seconds);
   Q_INVOKABLE void resetWarning();
   Q_INVOKABLE void refresh();
+  Q_INVOKABLE void pickFiles();
+  Q_INVOKABLE void receiveFiles();
+  Q_INVOKABLE void sendFiles(const QStringList &urls);
+  Q_INVOKABLE void forgetRecipient();
+  Q_INVOKABLE void sendTo(const QString &peer);
+  Q_INVOKABLE void browse();
   Q_INVOKABLE void openNetworkSettings();
 signals:
   void changed();

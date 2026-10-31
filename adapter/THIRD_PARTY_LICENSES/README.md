@@ -1,0 +1,124 @@
+# Rust dependency licenses
+
+Notices for the host-platform dependency graph resolved by Cargo.lock, including build and test dependencies.
+
+- adler2 2.0.1: 0BSD OR MIT OR Apache-2.0
+- async-broadcast 0.7.2: MIT OR Apache-2.0
+- async-recursion 1.2.0: MIT OR Apache-2.0
+- async-trait 0.1.92: MIT OR Apache-2.0
+- autocfg 1.5.1: Apache-2.0 OR MIT
+- base16ct 0.2.0: Apache-2.0 OR MIT
+- base64ct 1.8.3: Apache-2.0 OR MIT
+- bit-vec 0.9.1: Apache-2.0 OR MIT
+- bitflags 2.13.2: MIT OR Apache-2.0
+- block-buffer 0.10.4: MIT OR Apache-2.0
+- bytes 1.12.1: MIT
+- cc 1.8.0: MIT OR Apache-2.0
+- cfg-if 1.0.5: MIT OR Apache-2.0
+- cfg_aliases 0.2.2: MIT
+- const-oid 0.9.6: Apache-2.0 OR MIT
+- cpufeatures 0.2.17: MIT OR Apache-2.0
+- crc32fast 1.5.3: MIT OR Apache-2.0
+- crypto-bigint 0.5.5: Apache-2.0 OR MIT
+- crypto-common 0.1.7: MIT OR Apache-2.0
+- der 0.7.10: Apache-2.0 OR MIT
+- deranged 0.5.9: MIT OR Apache-2.0
+- digest 0.10.7: MIT OR Apache-2.0
+- ecdsa 0.16.9: Apache-2.0 OR MIT
+- elliptic-curve 0.13.8: Apache-2.0 OR MIT
+- endi 1.1.1: MIT
+- enumflags2 0.7.12: MIT OR Apache-2.0
+- enumflags2_derive 0.7.12: MIT OR Apache-2.0
+- equivalent 1.0.3: Apache-2.0 OR MIT
+- errno 0.3.14: MIT OR Apache-2.0
+- event-listener 5.4.2: Apache-2.0 OR MIT
+- event-listener-strategy 0.5.4: Apache-2.0 OR MIT
+- fastrand 2.5.0: Apache-2.0 OR MIT
+- ff 0.13.1: MIT/Apache-2.0
+- find-msvc-tools 0.1.14: MIT OR Apache-2.0
+- flate2 1.1.10: MIT OR Apache-2.0
+- futures-core 0.3.34: MIT OR Apache-2.0
+- futures-io 0.3.34: MIT OR Apache-2.0
+- futures-lite 2.6.1: Apache-2.0 OR MIT
+- generic-array 0.14.7: MIT
+- getrandom 0.2.17: MIT OR Apache-2.0
+- getrandom 0.3.4: MIT OR Apache-2.0
+- getrandom 0.4.3: MIT OR Apache-2.0
+- group 0.13.0: MIT/Apache-2.0
+- hashbrown 0.17.1: MIT OR Apache-2.0
+- hex 0.4.3: MIT OR Apache-2.0
+- hmac 0.12.1: MIT OR Apache-2.0
+- indexmap 2.14.2: Apache-2.0 OR MIT
+- itoa 1.0.18: MIT OR Apache-2.0
+- libc 0.2.191: MIT OR Apache-2.0
+- linux-raw-sys 0.12.1: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+- memchr 2.8.3: Unlicense OR MIT
+- memoffset 0.9.1: MIT
+- miniz_oxide 0.9.1: MIT OR Zlib OR Apache-2.0
+- mio 1.2.4: MIT
+- nix 0.31.3: MIT
+- num-conv 0.2.2: MIT OR Apache-2.0
+- once_cell 1.21.4: MIT OR Apache-2.0
+- ordered-stream 0.2.0: MIT OR Apache-2.0
+- p256 0.13.2: Apache-2.0 OR MIT
+- parking 2.2.1: Apache-2.0 OR MIT
+- pem-rfc7468 0.7.0: Apache-2.0 OR MIT
+- pin-project-lite 0.2.17: Apache-2.0 OR MIT
+- pkcs8 0.10.2: Apache-2.0 OR MIT
+- powerfmt 0.2.1: MIT OR Apache-2.0
+- primeorder 0.13.6: Apache-2.0 OR MIT
+- proc-macro-crate 3.5.0: MIT OR Apache-2.0
+- proc-macro2 1.0.107: MIT OR Apache-2.0
+- quote 1.0.47: MIT OR Apache-2.0
+- rand_core 0.6.4: MIT OR Apache-2.0
+- rcgen 0.14.10: MIT OR Apache-2.0
+- rfc6979 0.4.0: Apache-2.0 OR MIT
+- ring 0.17.14: Apache-2.0 AND ISC
+- rustix 1.1.5: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+- rustls 0.23.46: Apache-2.0 OR ISC OR MIT
+- rustls-pki-types 1.15.1: MIT OR Apache-2.0
+- rustls-webpki 0.103.15: ISC
+- sec1 0.7.3: Apache-2.0 OR MIT
+- serde 1.0.229: MIT OR Apache-2.0
+- serde_core 1.0.229: MIT OR Apache-2.0
+- serde_derive 1.0.229: MIT OR Apache-2.0
+- serde_json 1.0.154: MIT OR Apache-2.0
+- serde_repr 0.1.21: MIT OR Apache-2.0
+- sha2 0.10.9: MIT OR Apache-2.0
+- shlex 2.0.1: MIT OR Apache-2.0
+- signal-hook-registry 1.4.8: MIT OR Apache-2.0
+- signature 2.2.0: Apache-2.0 OR MIT
+- simd-adler32 0.3.10: MIT
+- socket2 0.6.5: MIT OR Apache-2.0
+- spki 0.7.3: Apache-2.0 OR MIT
+- subtle 2.6.1: BSD-3-Clause
+- syn 2.0.119: MIT OR Apache-2.0
+- syn 3.0.9: MIT OR Apache-2.0
+- tempfile 3.27.0: MIT OR Apache-2.0
+- time 0.3.55: MIT OR Apache-2.0
+- time-core 0.1.9: MIT OR Apache-2.0
+- tokio 1.54.1: MIT
+- tokio-macros 2.7.2: MIT
+- tokio-rustls 0.26.6: MIT OR Apache-2.0
+- toml_datetime 1.1.2+spec-1.1.0: MIT OR Apache-2.0
+- toml_edit 0.25.17+spec-1.1.0: MIT OR Apache-2.0
+- toml_parser 1.1.5+spec-1.1.0: MIT OR Apache-2.0
+- tracing 0.1.44: MIT
+- tracing-attributes 0.1.31: MIT
+- tracing-core 0.1.36: MIT
+- typenum 1.20.1: MIT OR Apache-2.0
+- unicode-ident 1.0.27: (MIT OR Apache-2.0) AND Unicode-3.0
+- untrusted 0.9.0: ISC
+- uuid 1.27.0: Apache-2.0 OR MIT
+- version_check 0.9.5: MIT/Apache-2.0
+- winnow 1.0.4: MIT
+- yasna 0.6.0: MIT OR Apache-2.0
+- zbus 5.19.0: MIT
+- zbus_macros 5.19.0: MIT
+- zbus_names 4.3.5: MIT
+- zcheapstr 1.1.0: MIT
+- zeroize 1.9.1: Apache-2.0 OR MIT
+- zmij 1.0.23: MIT
+- zvariant 5.15.1: MIT
+- zvariant_derive 5.15.1: MIT
+- zvariant_utils 4.2.0: MIT

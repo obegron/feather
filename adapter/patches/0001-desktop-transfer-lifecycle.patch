@@ -1,0 +1,746 @@
+diff --git a/crates/owly-airdrop/src/driver/mdns.rs b/crates/owly-airdrop/src/driver/mdns.rs
+index 4d44c73..265546e 100644
+--- a/crates/owly-airdrop/src/driver/mdns.rs
++++ b/crates/owly-airdrop/src/driver/mdns.rs
+@@ -24,13 +24,15 @@ pub struct Mdns {
+ 
+ /// A registered service, withdrawn when dropped.
+ pub struct Registration {
+-    _stop: oneshot::Sender<()>,
++    stop: Option<oneshot::Sender<()>>,
++    task: tokio::task::JoinHandle<()>,
+ }
+ 
+ /// A running browse, which stops when dropped.
+ pub struct Browse {
+     pub events: mpsc::Receiver<mdns::BrowseEvent>,
+-    _stop: oneshot::Sender<()>,
++    stop: Option<oneshot::Sender<()>>,
++    task: tokio::task::JoinHandle<()>,
+ }
+ 
+ impl Mdns {
+@@ -55,8 +57,11 @@ impl Mdns {
+         let socket = self.socket()?;
+         let (stop, stopped) = oneshot::channel::<()>();
+         let this = self.clone();
+-        tokio::spawn(async move { this.respond(socket, service, stopped).await });
+-        Ok(Registration { _stop: stop })
++        let task = tokio::spawn(async move { this.respond(socket, service, stopped).await });
++        Ok(Registration {
++            stop: Some(stop),
++            task,
++        })
+     }
+ 
+     /// Browses `_airdrop._tcp` until the browse is dropped (MDNS-6).
+@@ -65,10 +70,11 @@ impl Mdns {
+         let (events, rx) = mpsc::channel(64);
+         let (stop, stopped) = oneshot::channel::<()>();
+         let this = self.clone();
+-        tokio::spawn(async move { this.browse_loop(socket, events, stopped).await });
++        let task = tokio::spawn(async move { this.browse_loop(socket, events, stopped).await });
+         Ok(Browse {
+             events: rx,
+-            _stop: stop,
++            stop: Some(stop),
++            task,
+         })
+     }
+ 
+@@ -176,3 +182,18 @@ impl Mdns {
+         }
+     }
+ }
++
++impl Registration {
++    /// Send the goodbye and join the responder before closing the runtime.
++    pub async fn close(mut self) {
++        self.stop.take();
++        let _ = self.task.await;
++    }
++}
++impl Browse {
++    /// Stop and join the browser.
++    pub async fn close(mut self) {
++        self.stop.take();
++        let _ = self.task.await;
++    }
++}
+diff --git a/crates/owly-airdrop/src/driver/receiver.rs b/crates/owly-airdrop/src/driver/receiver.rs
+index 3f93fe0..a2a087e 100644
+--- a/crates/owly-airdrop/src/driver/receiver.rs
++++ b/crates/owly-airdrop/src/driver/receiver.rs
+@@ -7,14 +7,14 @@ use std::collections::HashMap;
+ use std::io;
+ use std::net::{Ipv6Addr, SocketAddrV6};
+ use std::path::PathBuf;
+-use std::sync::atomic::{AtomicU64, Ordering};
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+ use std::sync::{Arc, Mutex};
+ use std::time::Duration;
+ 
+ use tokio::io::{AsyncReadExt, AsyncWriteExt};
+ use tokio::net::{TcpListener, TcpStream};
+ use tokio::sync::{mpsc, oneshot};
+-use tokio::task::AbortHandle;
++use tokio::task::{AbortHandle, JoinSet};
+ use tokio::time::{Instant, sleep_until, timeout};
+ use tokio_rustls::TlsAcceptor;
+ 
+@@ -39,6 +39,8 @@ pub struct Options {
+     /// Where received files go.
+     pub destination: PathBuf,
+     pub max_connections: usize,
++    /// Emit extracted-file byte progress (opt in to preserve existing clients).
++    pub report_progress: bool,
+ }
+ 
+ impl Options {
+@@ -47,6 +49,7 @@ impl Options {
+             config,
+             destination,
+             max_connections: 16,
++            report_progress: false,
+         }
+     }
+ }
+@@ -86,6 +89,11 @@ pub enum ReceiverEvent {
+         id: u64,
+         urls: Vec<String>,
+     },
++    /// Actual extracted file bytes written; no compressed-size total implied.
++    Progress {
++        id: u64,
++        done: u64,
++    },
+     Received {
+         id: u64,
+         paths: Vec<PathBuf>,
+@@ -104,6 +112,8 @@ pub struct Receiver {
+     events: mpsc::Sender<ReceiverEvent>,
+     ids: Arc<AtomicU64>,
+     slots: Arc<Mutex<Slots>>,
++    stop: Arc<AtomicBool>,
++    paused: Arc<AtomicBool>,
+ }
+ 
+ /// The connections being served. When every slot is taken, a new connection
+@@ -123,6 +133,10 @@ struct Slot {
+     /// An `/Ask` is open on it: prompting, or accepted and not yet uploaded.
+     busy: bool,
+     abort: Option<AbortHandle>,
++    transfer: Option<u64>,
++    committing: bool,
++    cancel: Arc<AtomicBool>,
++    finished: Arc<AtomicBool>,
+ }
+ 
+ impl Slots {
+@@ -153,6 +167,10 @@ impl Slots {
+                 progress: Instant::now(),
+                 busy: false,
+                 abort: None,
++                transfer: None,
++                committing: false,
++                cancel: Arc::default(),
++                finished: Arc::default(),
+             },
+         );
+         Some(key)
+@@ -163,6 +181,7 @@ impl Slots {
+ struct Held {
+     slots: Arc<Mutex<Slots>>,
+     key: u64,
++    events: mpsc::Sender<ReceiverEvent>,
+ }
+ 
+ impl Held {
+@@ -175,7 +194,51 @@ impl Held {
+ 
+ impl Drop for Held {
+     fn drop(&mut self) {
+-        self.slots.lock().unwrap().held.remove(&self.key);
++        if let Some(slot) = self.slots.lock().unwrap().held.remove(&self.key) {
++            if let Some(id) = slot.transfer {
++                let _ = self.events.try_send(ReceiverEvent::Failed {
++                    id,
++                    reason: "Connection ended before transfer completed".into(),
++                });
++            }
++            slot.finished.store(true, Ordering::Release);
++        }
++    }
++}
++
++/// Control operations do not detach connection tasks. Cancelling waits until
++/// the connection and its staging work have ended. A final commit already in
++/// progress completes normally rather than abandoning a blocking filesystem task.
++#[derive(Clone)]
++pub struct ReceiverControl {
++    slots: Arc<Mutex<Slots>>,
++    stop: Arc<AtomicBool>,
++    paused: Arc<AtomicBool>,
++}
++impl ReceiverControl {
++    pub fn pause(&self, paused: bool) {
++        self.paused.store(paused, Ordering::Release);
++    }
++    pub fn shutdown(&self) {
++        self.stop.store(true, Ordering::Release);
++    }
++    pub async fn cancel(&self, id: u64) -> bool {
++        let target = self
++            .slots
++            .lock()
++            .unwrap()
++            .held
++            .values()
++            .find(|slot| slot.transfer == Some(id) && !slot.committing)
++            .map(|slot| (slot.cancel.clone(), slot.finished.clone()));
++        let Some((cancel, finished)) = target else {
++            return false;
++        };
++        cancel.store(true, Ordering::Release);
++        while !finished.load(Ordering::Acquire) {
++            tokio::time::sleep(Duration::from_millis(5)).await;
++        }
++        true
+     }
+ }
+ 
+@@ -199,6 +262,8 @@ impl Receiver {
+                 events,
+                 ids: Arc::new(AtomicU64::new(1)),
+                 slots: Arc::default(),
++                stop: Arc::default(),
++                paused: Arc::default(),
+             },
+             rx,
+         ))
+@@ -211,19 +276,36 @@ impl Receiver {
+         }
+     }
+ 
++    pub fn control(&self) -> ReceiverControl {
++        ReceiverControl {
++            slots: self.slots.clone(),
++            stop: self.stop.clone(),
++            paused: self.paused.clone(),
++        }
++    }
++
+     /// Serves until the event receiver is dropped. A failed connection never
+     /// stops the server (SEC-8).
+     pub async fn run(self) {
++        let mut tasks = JoinSet::new();
+         loop {
+             let accepted = tokio::select! {
+                 accepted = self.listener.accept() => accepted,
+-                () = self.events.closed() => return,
++                () = self.events.closed() => break,
++                _ = tokio::time::sleep(Duration::from_millis(25)) => {
++                    if self.stop.load(Ordering::Acquire) { break; }
++                    while tasks.try_join_next().is_some() {}
++                    continue;
++                },
+             };
+             let Ok((stream, peer)) = accepted else {
+                 // Out of descriptors, say: back off rather than spin.
+                 tokio::time::sleep(Duration::from_millis(100)).await;
+                 continue;
+             };
++            if self.paused.load(Ordering::Acquire) {
++                continue;
++            }
+             let std::net::SocketAddr::V6(peer) = peer else {
+                 continue;
+             };
+@@ -234,6 +316,7 @@ impl Receiver {
+             let held = Held {
+                 slots: self.slots.clone(),
+                 key,
++                events: self.events.clone(),
+             };
+             let task = Task {
+                 acceptor: self.acceptor.clone(),
+@@ -243,16 +326,37 @@ impl Receiver {
+                 ids: self.ids.clone(),
+                 peer,
+             };
+-            let handle = tokio::spawn(async move {
++            let handle = tasks.spawn(async move {
+                 if let Err(e) = task.run(stream, &held).await {
+                     tracing::debug!(%peer, "connection ended: {e}");
+                 }
++                let unfinished = held
++                    .slots
++                    .lock()
++                    .unwrap()
++                    .held
++                    .get(&held.key)
++                    .and_then(|s| s.transfer);
++                if let Some(id) = unfinished {
++                    let _ = held
++                        .events
++                        .send(ReceiverEvent::Failed {
++                            id,
++                            reason: "Connection ended before transfer completed".into(),
++                        })
++                        .await;
++                    held.update(|s| s.transfer = None);
++                }
+             });
+-            let abort = handle.abort_handle();
++            let abort = handle;
+             if let Some(slot) = self.slots.lock().unwrap().held.get_mut(&key) {
+                 slot.abort = Some(abort);
+             }
+         }
++        for slot in self.slots.lock().unwrap().held.values() {
++            slot.cancel.store(true, Ordering::Release);
++        }
++        while tasks.join_next().await.is_some() {}
+     }
+ }
+ 
+@@ -292,10 +396,15 @@ impl Task {
+         let mut staging: Option<Staging> = None;
+         let mut id = 0;
+         let mut eof = false;
++        let mut written = 0u64;
++        let cancelled = { held.slots.lock().unwrap().held[&held.key].cancel.clone() };
+         // Upload bytes in the current rate window, and when it ends.
+         let mut window = (0u64, Instant::now() + RATE_WINDOW);
+         loop {
+             while let Some(event) = conn.poll() {
++                if cancelled.load(Ordering::Acquire) {
++                    return Err(io::ErrorKind::Interrupted.into());
++                }
+                 match event {
+                     Event::Transmit(bytes) => {
+                         if bytes.starts_with(b"HTTP/") {
+@@ -305,8 +414,12 @@ impl Task {
+                         // Flushed: tokio-rustls may hold a record back
+                         // when the socket is busy, and the peer would wait
+                         // on it for good.
+-                        tls.write_all(&bytes).await?;
+-                        tls.flush().await?;
++                        timeout(Duration::from_secs(30), async {
++                            tls.write_all(&bytes).await?;
++                            tls.flush().await
++                        })
++                        .await
++                        .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))??;
+                     }
+                     Event::SetTimer(after) => timer = after.map(|d| Instant::now() + d),
+                     Event::Discovered(request) => {
+@@ -332,7 +445,12 @@ impl Task {
+                             );
+                         }
+                         id = self.ids.fetch_add(1, Ordering::Relaxed);
+-                        held.update(|s| s.busy = true);
++                        held.update(|s| {
++                            s.busy = true;
++                            s.transfer = Some(id);
++                            s.committing = false;
++                        });
++                        written = 0;
+                         let (reply, rx) = oneshot::channel();
+                         answer = Some(rx);
+                         let request = Request {
+@@ -347,40 +465,52 @@ impl Task {
+                     }
+                     Event::AskWithdrawn => {
+                         answer = None;
++                        held.update(|s| s.transfer = None);
+                         held.update(|s| s.busy = false);
+                         let _ = self.events.try_send(ReceiverEvent::Withdrawn { id });
+                     }
+                     Event::Urls(urls) => {
+                         let _ = self.events.send(ReceiverEvent::Urls { id, urls }).await;
++                        held.update(|s| {
++                            s.transfer = None;
++                            s.busy = false;
++                        });
+                     }
+                     Event::UploadStarted => match Staging::new(&self.options.destination).await {
+                         Ok(s) => {
+                             staging = Some(s);
+                             window = (0, Instant::now() + RATE_WINDOW);
+                         }
+-                        Err(e) => return self.fail(&mut tls, id, e).await,
++                        Err(e) => return self.fail(&mut tls, id, e, held).await,
+                     },
+                     Event::CreateDir(path) => {
+                         if let Err(e) = staging.as_mut().unwrap().create_dir(&path).await {
+-                            return self.fail(&mut tls, id, e).await;
++                            return self.fail(&mut tls, id, e, held).await;
+                         }
+                     }
+                     Event::CreateFile(path) => {
+                         if let Err(e) = staging.as_mut().unwrap().create_file(&path).await {
+-                            return self.fail(&mut tls, id, e).await;
++                            return self.fail(&mut tls, id, e, held).await;
+                         }
+                     }
+                     Event::Data(data) => {
+                         if let Err(e) = staging.as_mut().unwrap().write(&data).await {
+-                            return self.fail(&mut tls, id, e).await;
++                            return self.fail(&mut tls, id, e, held).await;
++                        }
++                        written += data.len() as u64;
++                        if self.options.report_progress {
++                            let _ = self
++                                .events
++                                .try_send(ReceiverEvent::Progress { id, done: written });
+                         }
+                     }
+                     Event::EndFile => {
+                         if let Err(e) = staging.as_mut().unwrap().end_file().await {
+-                            return self.fail(&mut tls, id, e).await;
++                            return self.fail(&mut tls, id, e, held).await;
+                         }
+                     }
+                     Event::UploadComplete => {
++                        held.update(|s| s.committing = true);
+                         held.update(|s| s.busy = false);
+                         let result = staging.take().unwrap().finish().await;
+                         conn.finish_upload(result.as_ref().map(|_| ()).map_err(|e| e.to_string()));
+@@ -392,12 +522,14 @@ impl Task {
+                             },
+                         };
+                         let _ = self.events.send(event).await;
++                        held.update(|s| s.transfer = None);
+                     }
+                     Event::UploadFailed(reason) => {
+                         // Dropping staging removes it and everything in it.
+                         staging = None;
+                         held.update(|s| s.busy = false);
+                         let _ = self.events.send(ReceiverEvent::Failed { id, reason }).await;
++                        held.update(|s| s.transfer = None);
+                     }
+                     Event::Close => {
+                         let _ = tls.shutdown().await;
+@@ -407,6 +539,9 @@ impl Task {
+             }
+             let prompting = answer.is_some();
+             tokio::select! {
++                _ = tokio::time::sleep(Duration::from_millis(25)) => {
++                    if cancelled.load(Ordering::Acquire) { return Err(io::ErrorKind::Interrupted.into()); }
++                },
+                 read = tls.read(&mut buf), if !eof => {
+                     match read {
+                         Ok(0) => {
+@@ -425,7 +560,7 @@ impl Task {
+                                 if now >= window.1 {
+                                     if window.0 < MIN_UPLOAD_BYTES {
+                                         let e = io::Error::new(io::ErrorKind::TimedOut, "upload too slow");
+-                                        return self.fail(&mut tls, id, e).await;
++                                        return self.fail(&mut tls, id, e, held).await;
+                                     }
+                                     window = (0, now + RATE_WINDOW);
+                                 }
+@@ -437,9 +572,11 @@ impl Task {
+                         Err(e) => {
+                             if prompting {
+                                 let _ = self.events.try_send(ReceiverEvent::Withdrawn { id });
++                                held.update(|s| s.transfer = None);
+                             }
+                             if staging.is_some() {
+                                 let _ = self.events.send(ReceiverEvent::Failed { id, reason: e.to_string() }).await;
++                                held.update(|s| s.transfer = None);
+                             }
+                             return Err(e);
+                         }
+@@ -450,6 +587,7 @@ impl Task {
+                     if answer.take().is_some() {
+                         held.update(|s| s.busy = false);
+                         let _ = self.events.try_send(ReceiverEvent::Withdrawn { id });
++                        held.update(|s| s.transfer = None);
+                     }
+                     conn.timeout();
+                 }
+@@ -461,7 +599,7 @@ impl Task {
+                     // A dropped request is a decline.
+                     let reply = reply.unwrap_or(Answer::Decline);
+                     if reply == Answer::Decline {
+-                        held.update(|s| s.busy = false);
++                        held.update(|s| { s.busy = false; s.transfer = None; });
+                     }
+                     conn.answer(reply);
+                 }
+@@ -474,6 +612,7 @@ impl Task {
+         tls: &mut S,
+         id: u64,
+         e: io::Error,
++        held: &Held,
+     ) -> io::Result<()> {
+         let _ = tls
+             .write_all(&crate::proto::http::response(
+@@ -491,6 +630,7 @@ impl Task {
+                 reason: e.to_string(),
+             })
+             .await;
++        held.update(|s| s.transfer = None);
+         Err(e)
+     }
+ }
+@@ -499,6 +639,38 @@ impl Task {
+ mod tests {
+     use super::*;
+ 
++    #[tokio::test]
++    async fn cancellation_waits_for_connection_cleanup_and_preserves_commit() {
++        let slots = Arc::new(Mutex::new(Slots::default()));
++        let key = slots.lock().unwrap().admit(Ipv6Addr::LOCALHOST, 1).unwrap();
++        let (cancel, finished) = {
++            let mut slots = slots.lock().unwrap();
++            let slot = slots.held.get_mut(&key).unwrap();
++            slot.transfer = Some(77);
++            (slot.cancel.clone(), slot.finished.clone())
++        };
++        let control = ReceiverControl {
++            slots: slots.clone(),
++            stop: Arc::default(),
++            paused: Arc::default(),
++        };
++        let cleanup = tokio::spawn(async move {
++            while !cancel.load(Ordering::Acquire) {
++                tokio::task::yield_now().await;
++            }
++            tokio::time::sleep(Duration::from_millis(10)).await;
++            finished.store(true, Ordering::Release);
++        });
++        assert!(control.cancel(77).await);
++        cleanup.await.unwrap();
++        slots.lock().unwrap().held.get_mut(&key).unwrap().committing = true;
++        assert!(
++            !control.cancel(77).await,
++            "do not cancel a filesystem commit already in progress"
++        );
++        assert!(!control.cancel(99).await);
++    }
++
+     fn addr(n: u16) -> Ipv6Addr {
+         Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, n)
+     }
+diff --git a/crates/owly-airdrop/src/driver/sender.rs b/crates/owly-airdrop/src/driver/sender.rs
+index 53980c2..d094197 100644
+--- a/crates/owly-airdrop/src/driver/sender.rs
++++ b/crates/owly-airdrop/src/driver/sender.rs
+@@ -9,6 +9,10 @@ use std::fs::File;
+ use std::io::{self, Read, Seek, Write};
+ use std::net::SocketAddrV6;
+ use std::path::{Path, PathBuf};
++use std::sync::{
++    Arc,
++    atomic::{AtomicBool, Ordering},
++};
+ use std::time::{Duration, SystemTime};
+ 
+ use flate2::Compression;
+@@ -113,6 +117,26 @@ impl Sender {
+         payload: &Payload,
+         receiver_flags: u32,
+         events: Option<mpsc::UnboundedSender<Event>>,
++    ) -> io::Result<Outcome> {
++        self.send_cancellable(
++            addr,
++            payload,
++            receiver_flags,
++            events,
++            Arc::new(AtomicBool::new(false)),
++        )
++        .await
++    }
++
++    /// Cooperative cancellation includes archive preparation. Returns only after
++    /// its blocking preparation task has stopped; Interrupted means cancelled.
++    pub async fn send_cancellable(
++        &self,
++        addr: SocketAddrV6,
++        payload: &Payload,
++        receiver_flags: u32,
++        events: Option<mpsc::UnboundedSender<Event>>,
++        cancel: Arc<AtomicBool>,
+     ) -> io::Result<Outcome> {
+         let compressor = if receiver_flags & SUPPORTS_DVZIP != 0 {
+             Compressor::DvZip
+@@ -123,13 +147,30 @@ impl Sender {
+             Payload::Urls(urls) => (Offer::Urls(urls.clone()), None),
+             Payload::Files(paths) => {
+                 let paths = paths.clone();
+-                let (offer, file, len) =
+-                    tokio::task::spawn_blocking(move || prepare(&paths, compressor))
+-                        .await
+-                        .map_err(io::Error::other)??;
++                let (offer, file, len) = tokio::task::spawn_blocking({
++                    let cancel = cancel.clone();
++                    move || prepare_cancellable(&paths, compressor, cancel)
++                })
++                .await
++                .map_err(io::Error::other)??;
+                 (offer, Some((file, len)))
+             }
+         };
++        check_cancel(&cancel)?;
++        tokio::select! {
++            result = self.send_prepared(addr, offer, archive, compressor, events) => result,
++            _ = cancelled(cancel) => Err(io::ErrorKind::Interrupted.into()),
++        }
++    }
++
++    async fn send_prepared(
++        &self,
++        addr: SocketAddrV6,
++        offer: Offer,
++        archive: Option<(File, u64)>,
++        compressor: Compressor,
++        events: Option<mpsc::UnboundedSender<Event>>,
++    ) -> io::Result<Outcome> {
+         let transfer_id = uuid_v4()?;
+         let body = archive.as_ref().map(|(_, len)| (compressor, *len));
+         let mut transfer = Transfer::new(&self.config, &transfer_id, &offer, body);
+@@ -263,6 +304,15 @@ fn uuid_v4() -> io::Result<String> {
+ /// Builds the `/Ask` offer for `paths` and compresses their archive into a
+ /// temporary file, returning it rewound with its length.
+ pub fn prepare(paths: &[PathBuf], compressor: Compressor) -> io::Result<(Offer, File, u64)> {
++    prepare_cancellable(paths, compressor, Arc::new(AtomicBool::new(false)))
++}
++
++pub fn prepare_cancellable(
++    paths: &[PathBuf],
++    compressor: Compressor,
++    cancel: Arc<AtomicBool>,
++) -> io::Result<(Offer, File, u64)> {
++    check_cancel(&cancel)?;
+     let mut items = Vec::new();
+     for path in paths {
+         let name = path
+@@ -284,6 +334,7 @@ pub fn prepare(paths: &[PathBuf], compressor: Compressor) -> io::Result<(Offer,
+         encoder: Encoder::new(compressor, Compression::fast()),
+         out: io::BufWriter::new(&mut spool),
+         ino: 1,
++        cancel,
+     };
+     // UP-2a: the root entry first.
+     writer.entry(
+@@ -364,10 +415,12 @@ struct ArchiveWriter<W: Write> {
+     encoder: Encoder,
+     out: W,
+     ino: u32,
++    cancel: Arc<AtomicBool>,
+ }
+ 
+ impl<W: Write> ArchiveWriter<W> {
+     fn entry(&mut self, entry: &Entry, data: Option<&mut dyn Read>) -> io::Result<()> {
++        check_cancel(&self.cancel)?;
+         let mut entry = entry.clone();
+         entry.ino = self.ino;
+         self.ino += 1;
+@@ -377,6 +430,7 @@ impl<W: Write> ArchiveWriter<W> {
+             let mut left = entry.size;
+             let mut buf = vec![0; 64 << 10];
+             while left > 0 {
++                check_cancel(&self.cancel)?;
+                 let n = data.read(&mut buf[..(left as usize).min(64 << 10)])?;
+                 if n == 0 {
+                     return Err(io::Error::new(
+@@ -414,6 +468,7 @@ impl<W: Write> ArchiveWriter<W> {
+         children.sort_by_key(|c| c.file_name());
+         let mut total = 0;
+         for child in children {
++            check_cancel(&self.cancel)?;
+             let Some(child_name) = child.file_name().to_str().map(String::from) else {
+                 continue;
+             };
+@@ -440,10 +495,76 @@ impl<W: Write> ArchiveWriter<W> {
+     }
+ }
+ 
++fn check_cancel(cancel: &AtomicBool) -> io::Result<()> {
++    if cancel.load(Ordering::Acquire) {
++        Err(io::ErrorKind::Interrupted.into())
++    } else {
++        Ok(())
++    }
++}
++async fn cancelled(cancel: Arc<AtomicBool>) {
++    while !cancel.load(Ordering::Acquire) {
++        tokio::time::sleep(Duration::from_millis(25)).await;
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn cancelled_preparation_stops_before_opening_files() {
++        let cancel = Arc::new(AtomicBool::new(true));
++        let error = prepare_cancellable(
++            &[PathBuf::from("/does-not-exist")],
++            Compressor::Gzip,
++            cancel,
++        )
++        .unwrap_err();
++        assert_eq!(error.kind(), io::ErrorKind::Interrupted);
++    }
++
++    #[test]
++    fn archive_writer_checks_cancellation_between_read_chunks() {
++        struct CancellingReader(Arc<AtomicBool>);
++        impl Read for CancellingReader {
++            fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
++                bytes.fill(0);
++                self.0.store(true, Ordering::Release);
++                Ok(bytes.len())
++            }
++        }
++        let cancel = Arc::new(AtomicBool::new(false));
++        let mut writer = ArchiveWriter {
++            encoder: Encoder::new(Compressor::Gzip, Compression::fast()),
++            out: Vec::new(),
++            ino: 1,
++            cancel: cancel.clone(),
++        };
++        let mut reader = CancellingReader(cancel);
++        let error = writer
++            .entry(&file_entry("large", 128 << 10, 1, 0), Some(&mut reader))
++            .unwrap_err();
++        assert_eq!(error.kind(), io::ErrorKind::Interrupted);
++    }
++
++    #[tokio::test]
++    async fn cancelled_sender_never_connects() {
++        let _ = rustls::crypto::ring::default_provider().install_default();
++        let sender = Sender::new(Config::new("test", "123456789abc")).unwrap();
++        let error = sender
++            .send_cancellable(
++                "[::1]:1".parse().unwrap(),
++                &Payload::Files(vec![PathBuf::from("/does-not-exist")]),
++                0,
++                None,
++                Arc::new(AtomicBool::new(true)),
++            )
++            .await
++            .unwrap_err();
++        assert_eq!(error.kind(), io::ErrorKind::Interrupted);
++    }
++
+     // spec: SEC-10
+     #[tokio::test(start_paused = true)]
+     async fn a_receiver_that_stops_reading_fails_the_upload() {
+diff --git a/crates/owly-cli/src/airdrop.rs b/crates/owly-cli/src/airdrop.rs
+index 471c2f7..fcf4de1 100644
+--- a/crates/owly-cli/src/airdrop.rs
++++ b/crates/owly-cli/src/airdrop.rs
+@@ -644,6 +644,7 @@ async fn run_receiver(
+             return Ok(ExitCode::SUCCESS);
+         };
+         match event {
++            ReceiverEvent::Progress { done, .. } => eprint!("\r{done} bytes received"),
+             ReceiverEvent::Discovered { peer, .. } => eprintln!("seen by {peer}"),
+             ReceiverEvent::Request(request) => {
+                 // SEC-4: everything here is the sender's; {:?} escapes it.
