@@ -21,7 +21,7 @@ claimed by automated tests.
    A transfer already committing files can complete normally after Cancel.
 5. Open Send files, choose local files and a discovered device, accept on the
    phone. Check native progress and successful delivery. Repeat through Dolphin's
-   Send with Feather context-menu action. Reject on the phone and inspect failure.
+   Share → Send with Feather action. Verify there is no duplicate Actions entry. Reject on the phone and inspect failure.
 6. While a transfer is active, verify the off switch is disabled and the D-Bus
    Disable method cannot stop it. Add time at the same time as a heartbeat; the
    transfer must continue. Let discovery expire during a long transfer: stop

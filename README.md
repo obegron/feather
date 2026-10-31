@@ -2,7 +2,7 @@
 
 A native Plasma 6 tray applet powered by Owly. Enable the radio to receive files,
 right-click the icon or popup for Send/Receive shortcuts, or drop files onto the tray icon.
-Dolphin also provides **Send with Feather**.
+Dolphin provides **Share → Send with Feather…** through KDE Purpose.
 Incoming offers ask for native Accept/Decline consent. Both directions appear in
 Plasma's transfer job UI, where they can be cancelled. Files are saved to Downloads.
 
@@ -81,7 +81,7 @@ rendering, actual firewall setup and AX200/KWallet reconnection remain to be che
 on a real host. See [local transfer acceptance](docs/LOCAL-TRANSFER-TEST.md).
 
 The three desktop components are the Plasma applet, the Qt session service with
-its private Rust transfer subprocess, and Dolphin's service menu. The adapter uses
+its private Rust transfer subprocess, and Dolphin's Purpose sharing plugin. The adapter uses
 Owly's public APIs and locally patched lifecycle callbacks rather than parsing CLI
 output. See [adapter provenance, IPC and upstream patches](adapter/README.md).
 No upstream PR will be created until local functionality is validated.
@@ -114,3 +114,8 @@ KDE application. On upgrading from the former `org.kde.feather` applet, finish
 transfers, turn the radio off, remove the old tray widget, close Feather and stop
 the old session service (`pkill -x feather-session`). After upgrading, add Feather
 again from System Tray settings. KConfig preferences remain in `featherrc`.
+
+The Purpose plugin hands selected local files to Feather's existing recipient
+picker; actual transfer progress remains in the session service's native KJobs.
+The former Actions service-menu entry is removed on package upgrade. Reopen
+Dolphin if its Share menu does not refresh immediately.

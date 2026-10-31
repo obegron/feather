@@ -1,0 +1,14 @@
+{
+  "KPlugin": {
+    "Id": "io.github.obegron.feather",
+    "Name": "Feather",
+    "Description": "Send files to a nearby Apple device",
+    "Icon": "document-send",
+    "License": "MIT",
+    "Authors": [{"Name": "Feather contributors"}]
+  },
+  "X-Purpose-PluginTypes": ["Export"],
+  "X-Purpose-ActionDisplay": "Send with Feather…",
+  "X-Purpose-Configuration": [],
+  "X-Purpose-Constraints": ["mimeType:application/octet-stream"]
+}
